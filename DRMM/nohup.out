@@ -1,0 +1,23 @@
+Extracting MNIST_data/train-images-idx3-ubyte.gz
+Extracting MNIST_data/train-labels-idx1-ubyte.gz
+Extracting MNIST_data/t10k-images-idx3-ubyte.gz
+Extracting MNIST_data/t10k-labels-idx1-ubyte.gz
+epoch number is 0
+5.29833 0.99 0
+train error after training %s batches is %s
+5.15308 0.82 100000
+train error after training %s batches is %s
+Traceback (most recent call last):
+  File "test.py", line 70, in <module>
+    _, train_loss, err, summ, probs = sess.run([model.train_ops, model.cost, model.classification_error, summary_op, model.softmax_layer_nonlin.gammas_lab], feed_dict = feed_dict)			
+  File "/usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.py", line 778, in run
+    run_metadata_ptr)
+  File "/usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.py", line 982, in _run
+    feed_dict_string, options, run_metadata)
+  File "/usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.py", line 1032, in _do_run
+    target_list, options, run_metadata)
+  File "/usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.py", line 1039, in _do_call
+    return fn(*args)
+  File "/usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.py", line 1021, in _run_fn
+    status, run_metadata)
+KeyboardInterrupt
