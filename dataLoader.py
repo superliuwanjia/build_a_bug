@@ -165,7 +165,8 @@ def save_video(video, video_path, dim):
 
 
 if __name__ == "__main__":
-    d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH", 32, (32, 32))
-    for batch in d.train_generator():
-        print batch[0].shape
-        print batch[1].shape
+    pass
+    #d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH", 32, (32, 32))
+    #for batch in d.train_generator():
+    #    print batch[0].shape
+    #    print batch[1].shape
