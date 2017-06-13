@@ -19,7 +19,7 @@ class KTHDataLoader:
         self._video_size = video_size
 
 
-        # KTH video hape for i in self._clips[split]] 
+        # KTH video splits 
         splits = [[11, 12, 13, 14, 15, 16, 17, 18],          # train
                   [19, 20, 21, 23, 24, 25, 1, 4],            # validation
                   [22, 2, 3, 5, 6, 7, 8, 9, 10]]             # test
@@ -32,7 +32,7 @@ class KTHDataLoader:
                          "walking":5}
         self._num_classes = len(label_mapping)
 
-        # file containing KTH video ground truth per frame
+        # file containing KTH video frame clip intervals
         sequence_list = os.path.join(data_path, "00sequences.txt")
         sequences = self._read_sequence_list(sequence_list)
        
@@ -57,7 +57,7 @@ class KTHDataLoader:
             for clip_range in sequences[video_key_in_sequences]:
                 self._labels[split].append(np.eye(len(label_mapping))[label]) 
                 self._clips[split].append(video[clip_range[0] - 1:clip_range[1] - 1, :, :, :])
-        
+                print clip_range[1]-clip_range[0] 
         # maximum length for all clips, limit for padding
         self._clip_length = np.array(\
                 reduce(lambda a, b: a + [elem.shape[0] for elem in b], 
@@ -162,11 +162,8 @@ def save_video(video, video_path, dim):
     return skvideo.io.write(video_path, np.array(vid_data))
 
 
-
-
 if __name__ == "__main__":
-    pass
-    #d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH", 32, (32, 32))
-    #for batch in d.train_generator():
-    #    print batch[0].shape
-    #    print batch[1].shape
+    d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH", 32, (32, 32))
+    for batch in d.train_generator():
+        print batch[0].shape
+        print batch[1].shape
