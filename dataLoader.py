@@ -57,12 +57,10 @@ class KTHDataLoader:
             for clip_range in sequences[video_key_in_sequences]:
                 self._labels[split].append(np.eye(len(label_mapping))[label]) 
                 self._clips[split].append(video[clip_range[0] - 1:clip_range[1] - 1, :, :, :])
-                print clip_range[1]-clip_range[0] 
         # maximum length for all clips, limit for padding
         self._clip_length = np.array(\
                 reduce(lambda a, b: a + [elem.shape[0] for elem in b], 
                        self._clips, [])).max()      
-        print self._clip_length
 
         for split in range(3):
             for clip_index, (clip, label) in \
@@ -163,7 +161,7 @@ def save_video(video, video_path, dim):
 
 
 if __name__ == "__main__":
-    d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH", 32, (32, 32))
+    d = KTHDataLoader("/home/robin/shared/KTH", 32, (32, 32))
     for batch in d.train_generator():
         print batch[0].shape
         print batch[1].shape
