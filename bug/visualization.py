@@ -1,11 +1,15 @@
 import sys
 import os
-import numpy
+import numpy as np
+import tensorflow as tf
 
 sys.path.insert(0, '/home/robin/Documents/build_a_bug')
 
 from dataLoader import *
 from model import *
+
+np.random.seed(0)
+tf.set_random_seed(0)
 
 def main():
     viz_output_folder = "/home/robin/Documents/visualization"
@@ -30,12 +34,15 @@ def main():
                               bug.Y : np.expand_dims(label,axis=0),
                               bug.lr : 0.000001
                             }
-
-                outs = sess.run(bug.retina_output, feed_dict = feed_dict)
-                print "max:", outs.max()
-                save_video(outs[:,:,:,0:3], \
+                
+                thresholded, before_threshold = sess.run([bug.retina_output, \
+                                                          bug.retina_before_threshold], \
+                                                         feed_dict = feed_dict)
+                print "max, thresholded:", thresholded.max()
+                print "max, not thresholded:", before_threshold.max()
+                save_video(thresholded[:,:,:,0:3], \
                     os.path.join(viz_output_folder, fn + "_on.avi"), (32, 32))
-                save_video(outs[:,:,:,3:6], \
+                save_video(thresholded[:,:,:,3:6], \
                     os.path.join(viz_output_folder, fn + "_off.avi"), (32, 32))
 
                  
