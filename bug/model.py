@@ -13,6 +13,8 @@ from retina import *
 from layer  import *
 from utils import *
 from bug_utils import *
+from lenet import *
+
 class Bug():
 	"""docstring for Bug"""
 	def __init__(self, inp_size, out_size, conv_layers, lrcn_layers, num_classes = 6): # num_classes set to no of classes in kth dataset
@@ -45,11 +47,13 @@ class Bug():
 		with tf.name_scope("convnet"):
 			with tf.variable_scope("convnet"):
 				# convnet = Convnet(2, [[1,1,1,1], [1,1,1,1]], [], ["VALID", "VALID"])
-				convnet = Convnet( self.conv_layers, [[1,4,4,1], [1,2,2,1]], [[13,13, self.inp_size[4]*2, 48], [5,5, 48, 128]], ["SAME", "SAME"], "convnet", [[2,2], [2,2]], ["VALID", "VALID"])			
-				convnet.build(self.retina_output)
-				self.convnet_out = convnet.get_output()
+				# convnet = Convnet( self.conv_layers, [[1,4,4,1], [1,2,2,1]], [[13,13, self.inp_size[4]*2, 48], [5,5, 48, 128]], ["SAME", "SAME"], "convnet", [[2,2], [2,2]], ["VALID", "VALID"])			
+				# convnet.build(self.retina_output)
+				lenet = Lenet(self.retina_output)
+				self.convnet_out = lenet.output
 
 				self.convnet_out_sh = self.convnet_out.get_shape().as_list()[1:]
+				print self.convnet_out.get_shape(),"hfjkfsdkjfdsj"
 				# self.convnet_out = tf.reshape(conv_out,
 				# 								[self.inp_size[0], self.inp_size[1], -1])
 				# 								# [self.inp_size[0], self.inp_size[1], self.inp_size[2], self.inp_size[3], self.inp_size[4]*2])
