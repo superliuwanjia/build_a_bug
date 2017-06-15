@@ -34,18 +34,21 @@ def main():
                               bug.Y : np.expand_dims(label,axis=0),
                               bug.lr : 0.000001
                             }
-                
-                thresholded, before_threshold = sess.run([bug.retina_output, \
-                                                          bug.retina_before_threshold], \
-                                                         feed_dict = feed_dict)
-                print "max, thresholded:", thresholded.max()
-                print "max, not thresholded:", before_threshold.max()
-                save_video(thresholded[:,:,:,0:3], \
-                    os.path.join(viz_output_folder, fn + "_on.avi"), (32, 32))
-                save_video(thresholded[:,:,:,3:6], \
-                    os.path.join(viz_output_folder, fn + "_off.avi"), (32, 32))
 
-                 
+                dim = (32, 32)
+                thresholded, before_threshold = sess.run([bug.retina_output, \
+                                                          bug.retina_output_before_threshold], \
+                                                         feed_dict = feed_dict)
+                on_with_off = np.concatenate([resize_video(video,dim),\
+											  resize_video(thresholded[:,:,:,0:3],dim),\
+										      resize_video(thresholded[:,:,:,3:6], dim)], axis=2)
+                #save_video(thresholded[:,:,:,0:3], \
+                #    os.path.join(viz_output_folder, fn + "_on.avi"), (32, 32))
+                #save_video(thresholded[:,:,:,3:6], \
+                #    os.path.join(viz_output_folder, fn + "_off.avi"), (32, 32))
+                save_video(on_with_off, \
+                    os.path.join(viz_output_folder, fn + ".avi"))
+ 
 
 if __name__ == "__main__":
 	main()

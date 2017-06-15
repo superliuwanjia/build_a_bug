@@ -174,7 +174,7 @@ def scale(m, scale=[0, 255]):
     if m.max() == m.min():
         return np.ones_like(m) * scale[1]
     else:
-        return (m - m.min() + scale[0]) * (scale[1] - scale[0])/ (m.max() - m.min())
+        return ((m - m.min()) * (scale[1] - scale[0]))/ (m.max() - m.min())
 
 
 def load_video(video_path, dim):
@@ -188,12 +188,23 @@ def load_video(video_path, dim):
             print len(vid_data)
     return np.array(vid_data)
 
-def save_video(video, video_path, dim):
+def resize_video(video, dim):
+    vid_data = []
+    for frame in video:
+        vid_data.append(scipy.misc.imresize(frame, dim))
+    vid_data = np.array(vid_data)
+    return vid_data
+
+def save_video(video, video_path, dim=None):
     """ output video with given resolution"""
     vid_data = []
     for frame in video:
-        vid_data.append(scale(scipy.misc.imresize(frame, dim)).astype(np.uint8))
-    return skvideo.io.vwrite(video_path, np.array(vid_data))
+        if not dim is None:
+            vid_data.append(scipy.misc.imresize(frame, dim))
+        else:
+            vid_data.append(frame)
+    vid_data = np.array(vid_data)
+    return skvideo.io.vwrite(video_path, vid_data)
 
 
 if __name__ == "__main__":
