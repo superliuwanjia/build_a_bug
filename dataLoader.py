@@ -7,6 +7,7 @@ import os
 import math
 import random
 import glob
+import warnings
 
 import numpy as np
 import skvideo.io
@@ -109,17 +110,27 @@ class KTHDataLoader:
     def train_y(self):
         return self._labels[0]
     @property
+    def train_fn(self):
+        return self._fns[0]
+    @property
     def validation_x(self):
         return self._clips[1]
     @property
     def validation_y(self):
         return self._labels[1]
     @property
+    def validation_fn(self):
+        return self._fns[1]
+    @property
     def test_x(self):
         return self._clips[2]
     @property
     def test_y(self):
         return self._labels[2]
+    @property
+    def test_fn(self):
+        return self._fns[2]
+
     @property
     def batch_size(self):
         return self._batch_size
@@ -160,7 +171,10 @@ class KTHDataLoader:
         return sequences
 
 def scale(m, scale=[0, 255]):
-    return (m - m.min() + scale[0]) * (scale[1] - scale[0])/ (m.max() - m.min())
+    if m.max() == m.min():
+        return np.ones_like(m) * scale[1]
+    else:
+        return (m - m.min() + scale[0]) * (scale[1] - scale[0])/ (m.max() - m.min())
 
 
 def load_video(video_path, dim):
@@ -179,7 +193,7 @@ def save_video(video, video_path, dim):
     vid_data = []
     for frame in video:
         vid_data.append(scale(scipy.misc.imresize(frame, dim)).astype(np.uint8))
-    return skvideo.io.write(video_path, np.array(vid_data))
+    return skvideo.io.vwrite(video_path, np.array(vid_data))
 
 
 if __name__ == "__main__":
