@@ -14,7 +14,15 @@ import sklearn.utils
 import scipy.misc
 
 class KTHDataLoader:
-    def __init__(self, data_path, batch_size, video_size):
+    def __init__(self, data_path, batch_size, video_size, mode="first80"):
+        """
+        KTH dataset loader and preprocessor
+        Args:
+            data_path: folder path containing both 00sequence.txt file and videos
+            batch_size: batch size
+            video_size: video dimention (h, w)
+            mode: Method to process video clips, "episodes" or "first80"
+        """
         self._batch_size = batch_size
         self._video_size = video_size
 
@@ -38,9 +46,9 @@ class KTHDataLoader:
        
  
         # clip and labels for each split, will be converted into [np.arrays()] format
-        self._clips = [[] for _ in range(3)]                          # resized videos
-        self._labels = [[] for _ in range(3)]                          # labels
-
+        self._clips = [[] for _ in range(3)]                        # resized videos
+        self._labels = [[] for _ in range(3)]                       # labels
+        self._fns = [[] for _ in range(3)]                          # file names
         # read video into np array and create label according to splits        
         for video_file in glob.glob(os.path.join(data_path, "*.avi")):
             fn = os.path.basename(video_file)
@@ -54,11 +62,20 @@ class KTHDataLoader:
             # obtain clips from video
             video_key_in_sequences = "_".join(fn.split("_")[0:len(fn.split("_")) - 1])
             print video_key_in_sequences
-            for clip_range in sequences[video_key_in_sequences]:
+
+            if mode == "episodes":
+                for clip_index, clip_range in enumerate(sequences[video_key_in_sequences]):
+                    self._labels[split].append(np.eye(len(label_mapping))[label]) 
+                    self._clips[split].append(video[clip_range[0] - 1:clip_range[1] - 1, :, :, :])
+                    self._fns[split].append(fn + "_" + str(clip_index))
+            elif mode == "first80":
                 self._labels[split].append(np.eye(len(label_mapping))[label]) 
-                self._clips[split].append(video[clip_range[0] - 1:clip_range[1] - 1, :, :, :])
-                print clip_range[1]-clip_range[0] 
-        # maximum length for all clips, limit for padding
+                self._clips[split].append(video[0:80, :, :, :])
+                self._fns[split].append(fn)   
+            else:
+                raise NotImplementedError("Unknown preprocess mode.")
+
+    # maximum length for all clips, limit for padding
         self._clip_length = np.array(\
                 reduce(lambda a, b: a + [elem.shape[0] for elem in b], 
                        self._clips, [])).max()      
@@ -71,8 +88,12 @@ class KTHDataLoader:
                     ((0, self._clip_length - clip.shape[0]), (0, 0), (0, 0), (0, 0)),\
                     mode="constant", constant_values=0)
             # shuffling
-            self._clips[split], self._labels[split] = sklearn.utils.shuffle(
-                self._clips[split], self._labels[split]) 
+            shuffle_index = range(len(self._clips[split]))
+            random.shuffle(shuffle_index)
+            self._clips[split] = [self._clips[split][i] for i in shuffle_index]
+            self._labels[split] = [self._labels[split][i] for i in shuffle_index]
+            self._fns[split] = [self._fns[split][i] for i in shuffle_index]
+            
             self._clips[split] = np.concatenate(\
                 [np.expand_dims(i, axis=0) for i in self._clips[split]]) 
             self._labels[split] = np.concatenate(\
@@ -163,7 +184,7 @@ def save_video(video, video_path, dim):
 
 
 if __name__ == "__main__":
-    d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH", 32, (32, 32))
+    d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH_small", 32, (32, 32), mode="first80")
     for batch in d.train_generator():
         print batch[0].shape
         print batch[1].shape
