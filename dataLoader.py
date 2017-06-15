@@ -75,11 +75,10 @@ class KTHDataLoader:
             else:
                 raise NotImplementedError("Unknown preprocess mode.")
 
-    # maximum length for all clips, limit for padding
+        # maximum length for all clips, limit for padding
         self._clip_length = np.array(\
                 reduce(lambda a, b: a + [elem.shape[0] for elem in b], 
                        self._clips, [])).max()      
-        print self._clip_length
 
         for split in range(3):
             for clip_index, (clip, label) in \
@@ -184,7 +183,7 @@ def save_video(video, video_path, dim):
 
 
 if __name__ == "__main__":
-    d = KTHDataLoader("/home/liuwanjia/Documents/videos/KTH_small", 32, (32, 32), mode="first80")
+    d = KTHDataLoader("/home/robin/shared/KTH_small", 32, (32, 32))
     for batch in d.train_generator():
         print batch[0].shape
         print batch[1].shape
