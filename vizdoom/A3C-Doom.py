@@ -40,7 +40,7 @@ from time import time
 
 # ### Helper Functions
 MAX_EPISODE = 30
-retina = True
+retina = False
 # In[ ]:
 
 
@@ -90,7 +90,10 @@ class AC_Network():
             if retina:
                 self.retina = Retina(self.inputs_r, [1, -1, 84, 84, 1])
                 self.inputs_r = self.retina.get_output()
-            self.imageIn = tf.reshape(self.inputs_r,shape=[-1,84,84,2])
+                self.imageIn = tf.reshape(self.inputs_r,shape=[-1,84,84,2])
+            else:
+                self.imageIn = tf.reshape(self.inputs_r,shape=[-1,84,84,1])
+                    
             self.conv1 = slim.conv2d(activation_fn=tf.nn.elu,
                 inputs=self.imageIn,num_outputs=16,
                 kernel_size=[8,8],stride=[4,4],padding='VALID')
