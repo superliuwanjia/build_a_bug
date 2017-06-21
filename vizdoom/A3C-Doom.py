@@ -86,11 +86,11 @@ class AC_Network():
             #Input and visual encoding layers
 
             self.inputs = tf.placeholder(shape=[None,s_size],dtype=tf.float32)
-            self.inputs = tf.reshape(self.inputs, shape=[1, -1, 84 * 84])
+            self.inputs_r = tf.reshape(self.inputs, shape=[1, -1, 84 * 84])
             if retina:
-                self.retina = Retina(self.inputs, [1, -1, 84, 84, 1])
-                self.inputs = self.retina.get_output()
-            self.imageIn = tf.reshape(self.inputs,shape=[-1,84,84,2])
+                self.retina = Retina(self.inputs_r, [1, -1, 84, 84, 1])
+                self.inputs_r = self.retina.get_output()
+            self.imageIn = tf.reshape(self.inputs_r,shape=[-1,84,84,2])
             self.conv1 = slim.conv2d(activation_fn=tf.nn.elu,
                 inputs=self.imageIn,num_outputs=16,
                 kernel_size=[8,8],stride=[4,4],padding='VALID')
