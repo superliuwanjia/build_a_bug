@@ -20,14 +20,18 @@
 import threading
 import multiprocessing
 import numpy as np
+import os
+import sys
 #import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import scipy.signal
 #get_ipython().magic(u'matplotlib inline')
+
+sys.path.append("../EDRNN/")
 from helper import *
 from vizdoom import *
-from ../EDRNN/retina import *
+from retina import *
 
 from random import choice
 from time import sleep
@@ -191,7 +195,7 @@ class Worker():
         game.set_episode_start_time(10)
         game.set_window_visible(False)
         game.set_sound_enabled(False)
-        game.set_living_reward(-5)
+        game.set_living_reward(-1)
         game.set_mode(Mode.PLAYER)
         game.init()
         self.actions = self.actions = np.identity(a_size,dtype=bool).tolist()
