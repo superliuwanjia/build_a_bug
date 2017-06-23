@@ -29,6 +29,9 @@ import scipy.signal
 #get_ipython().magic(u'matplotlib inline')
 
 sys.path.append("../EDRNN/")
+sys.path.append("../")
+
+from dataLoader import *
 from helper import *
 from vizdoom import *
 from retina import *
@@ -40,7 +43,7 @@ from time import time
 
 # ### Helper Functions
 MAX_EPISODE = 30
-retina = False
+retina = True
 # In[ ]:
 
 
@@ -59,7 +62,7 @@ def update_target_graph(from_scope,to_scope):
 def process_frame(frame):
     s = frame[10:-10,30:-30]
     s = scipy.misc.imresize(s,[84,84])
-    s = np.reshape(s,[np.prod(s.shape)]) / 255.0
+    s = np.reshape(s,[np.prod(s.shape)])
     return s
 
 # Discounting function used to calculate discounted returns.
@@ -232,12 +235,13 @@ class Worker():
             self.local_AC.advantages:advantages,
             self.local_AC.state_in[0]:rnn_state[0],
             self.local_AC.state_in[1]:rnn_state[1]}
-        v_l,p_l,e_l,g_n,v_n,_ = sess.run([self.local_AC.value_loss,
+        v_l,p_l,e_l,g_n,v_n,retina_out,_ = sess.run([self.local_AC.value_loss,
             self.local_AC.policy_loss,
             self.local_AC.entropy,
             self.local_AC.grad_norms,
             self.local_AC.var_norms,
-            self.local_AC.apply_grads],
+            self.local_AC.apply_grads,
+            self.local_AC.imageIn],
             feed_dict=feed_dict)
         return v_l / len(rollout),p_l / len(rollout),e_l / len(rollout), g_n,v_n
         
@@ -251,6 +255,7 @@ class Worker():
                 episode_buffer = []
                 episode_values = []
                 episode_frames = []
+                episode_frames_after_retina = []
                 episode_reward = 0
                 episode_step_count = 0
                 d = False
@@ -263,10 +268,11 @@ class Worker():
                 
                 while self.env.is_episode_finished() == False:
                     #Take an action using probabilities from policy network output.
-                    a_dist,v,rnn_state = sess.run([self.local_AC.policy,self.local_AC.value,self.local_AC.state_out], 
+                    a_dist,v,rnn_state, ret_out = sess.run([self.local_AC.policy,self.local_AC.value,self.local_AC.state_out], 
                         feed_dict={self.local_AC.inputs:[s],
                         self.local_AC.state_in[0]:rnn_state[0],
-                        self.local_AC.state_in[1]:rnn_state[1]})
+                        self.local_AC.state_in[1]:rnn_state[1],
+                        self.local_AC.imageIn})
                     a = np.random.choice(a_dist[0],p=a_dist[0])
                     a = np.argmax(a_dist == a)
 
@@ -275,6 +281,7 @@ class Worker():
                     if d == False:
                         s1 = self.env.get_state().screen_buffer
                         episode_frames.append(s1)
+                        episode_frames_after_retina.append(ret_out)
                         s1 = process_frame(s1)
                     else:
                         s1 = s
@@ -298,6 +305,7 @@ class Worker():
                             self.local_AC.state_in[1]:rnn_state[1]})[0,0]
                         v_l,p_l,e_l,g_n,v_n = self.train(episode_buffer,sess,gamma,v1)
                         episode_buffer = []
+                        episode_frames_after_retina = []
                         sess.run(self.update_local_ops)
                     if d == True:
                         break
@@ -316,6 +324,8 @@ class Worker():
                     if self.name == 'worker_0' and episode_count % 25 == 0:
                         time_per_step = 0.05
                         images = np.array(episode_frames)
+                        images_retina = np.array(episode_frames_after_retina)
+                        if 
                         make_gif(images,'./frames/image'+str(episode_count)+'.gif',
                             duration=len(images)*time_per_step,true_image=True,salience=False)
                     if episode_count % 250 == 0 and self.name == 'worker_0':
@@ -326,6 +336,13 @@ class Worker():
                     mean_length = np.mean(self.episode_lengths[-5:])
                     mean_value = np.mean(self.episode_mean_values[-5:])
                     summary = tf.Summary()
+                    for var in tf.trainable_variables():
+                        tf.summary.histogram(var.name, var)
+                    for grad, var in \
+                            zip(tf.gradients(self.local_AC.loss, tf.trainable_variables(), \
+                                tf.trainable_variables()):
+                        tf.summary.histogram(var.name + "/gradient", grad)
+
                     summary.value.add(tag='Perf/Reward', simple_value=float(mean_reward))
                     summary.value.add(tag='Perf/Length', simple_value=float(mean_length))
                     summary.value.add(tag='Perf/Value', simple_value=float(mean_value))

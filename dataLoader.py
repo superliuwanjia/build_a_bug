@@ -195,20 +195,22 @@ def resize_video(video, dim):
     vid_data = np.array(vid_data)
     return vid_data
 
-def save_video(video, video_path, dim=None):
+def save_video(video, video_path, dim=None, framerate=3):
     """ output video with given resolution"""
     vid_data = []
+    writer = skvideo.io.FFmpegWriter(video_path, inputdict={'-framerate':str(framerate)})
     for frame in video:
         if not dim is None:
-            vid_data.append(scipy.misc.imresize(frame, dim))
-        else:
-            vid_data.append(frame)
-    vid_data = np.array(vid_data)
-    return skvideo.io.vwrite(video_path, vid_data)
+            frame = scipy.misc.imresize(frame, dim)
+        writer.writeFrame(frame)
+    writer.close()
 
 
 if __name__ == "__main__":
-    d = KTHDataLoader("/home/robin/shared/KTH_small", 32, (32, 32))
-    for batch in d.train_generator():
-        print batch[0].shape
-        print batch[1].shape
+    #d = KTHDataLoader("/home/robin/shared/KTH_small", 32, (32, 32))
+    #for batch in d.train_generator():
+    #    print batch[0].shape
+    #    print batch[1].shape
+    a = (np.random.random(size=(40,64,64,3))*255).astype(np.uint8)
+    save_video(a, "1.mp4", framerate=1)
+    save_video(a, "5.mp4", framerate=5)
