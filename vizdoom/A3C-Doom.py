@@ -43,7 +43,7 @@ from time import time
 
 # ### Helper Functions
 MAX_EPISODE = 30
-retina = True
+retina = False
 # In[ ]:
 
 
@@ -324,14 +324,16 @@ class Worker():
                         time_per_step = 0.05
                         images = np.array(episode_frames)
                         images_retina = np.array(episode_frames_after_retina)
-                        print "visualizing:, frame shape:",images.shape, images.min(), images.max()
-                        print "visualizing:, retina shape:",images_retina.shape, images_retina.min(), images_retina.max()
+#                        print "visualizing:, frame shape:",images.shape, images.min(), images.max()
+#                        print "visualizing:, retina shape:",images_retina.shape, images_retina.min(), images_retina.max()
                         make_gif(images,'./frames/image'+str(episode_count)+'.gif',
                             duration=len(images)*time_per_step,true_image=True,salience=False)
-                        make_gif(np.squeeze(images_retina[:,:,:,:,0]),'./frames/retina_on'+str(episode_count)+'.gif',
-                            duration=len(images)*time_per_step,true_image=True,salience=False)
-                        make_gif(np.squeeze(images_retina[:,:,:,:,1]),'./frames/retina_off'+str(episode_count)+'.gif',
-                            duration=len(images)*time_per_step,true_image=True,salience=False)
+
+                        if retina:
+                            make_gif(np.squeeze(images_retina[:,:,:,:,0]),'./frames/retina_on'+str(episode_count)+'.gif',
+                                duration=len(images)*time_per_step,true_image=True,salience=False)
+                            make_gif(np.squeeze(images_retina[:,:,:,:,1]),'./frames/retina_off'+str(episode_count)+'.gif',
+                                duration=len(images)*time_per_step,true_image=True,salience=False)
  
                     if episode_count % 250 == 0 and self.name == 'worker_0':
                         saver.save(sess,self.model_path+'/model-'+str(episode_count)+'.cptk')
