@@ -28,17 +28,16 @@ class Retina():
 
 
     def create_vars(self,):
-        self.alpha_s = tf.Variable(0.5)
-        self.alpha_m = tf.Variable(0.7)
-        self.alpha_l = tf.Variable(0.9)
+        self.alpha_s = tf.Variable(0.3, trainable=False)
+        self.alpha_m = tf.Variable(0.5, trainable=False)
+        self.alpha_l = tf.Variable(0.7, trainable=False)
         self.alphas = [self.alpha_s, self.alpha_m, self.alpha_l]
-        self.beta_s = tf.Variable(0.33)
-        self.beta_m = tf.Variable(0.33)
-        self.beta_l = tf.Variable(0.34)
+        self.beta_s = tf.Variable(0.33, trainable=False)
+        self.beta_m = tf.Variable(0.33, trainable=False)
+        self.beta_l = tf.Variable(0.34, trainable=False)
         self.beta = [self.beta_s, self.beta_m, self.beta_l]
-        self.mu_off = tf.Variable(1, dtype=tf.float32)
-        self.mu_on= tf.Variable(1, dtype=tf.float32)
-        print("here")
+        self.mu_off = tf.Variable(1, dtype=tf.float32, trainable=False)
+        self.mu_on= tf.Variable(-1, dtype=tf.float32, trainable=False)
 
     def get_ema(self):
 
