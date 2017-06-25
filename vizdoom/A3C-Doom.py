@@ -268,11 +268,10 @@ class Worker():
                 
                 while self.env.is_episode_finished() == False:
                     #Take an action using probabilities from policy network output.
-                    a_dist,v,rnn_state, ret_out = sess.run([self.local_AC.policy,self.local_AC.value,self.local_AC.state_out], 
+                    a_dist,v,rnn_state, ret_out = sess.run([self.local_AC.policy,self.local_AC.value,self.local_AC.state_out, self.local_AC.imageIn], 
                         feed_dict={self.local_AC.inputs:[s],
                         self.local_AC.state_in[0]:rnn_state[0],
-                        self.local_AC.state_in[1]:rnn_state[1],
-                        self.local_AC.imageIn})
+                        self.local_AC.state_in[1]:rnn_state[1]})
                     a = np.random.choice(a_dist[0],p=a_dist[0])
                     a = np.argmax(a_dist == a)
 
@@ -325,9 +324,15 @@ class Worker():
                         time_per_step = 0.05
                         images = np.array(episode_frames)
                         images_retina = np.array(episode_frames_after_retina)
-                        if 
+                        print "visualizing:, frame shape:",images.shape, images.min(), images.max()
+                        print "visualizing:, retina shape:",images_retina.shape, images_retina.min(), images_retina.max()
                         make_gif(images,'./frames/image'+str(episode_count)+'.gif',
                             duration=len(images)*time_per_step,true_image=True,salience=False)
+                        make_gif(np.squeeze(images_retina[:,:,:,:,0]),'./frames/retina_on'+str(episode_count)+'.gif',
+                            duration=len(images)*time_per_step,true_image=True,salience=False)
+                        make_gif(np.squeeze(images_retina[:,:,:,:,1]),'./frames/retina_off'+str(episode_count)+'.gif',
+                            duration=len(images)*time_per_step,true_image=True,salience=False)
+ 
                     if episode_count % 250 == 0 and self.name == 'worker_0':
                         saver.save(sess,self.model_path+'/model-'+str(episode_count)+'.cptk')
                         print ("Saved Model")
@@ -338,10 +343,10 @@ class Worker():
                     summary = tf.Summary()
                     for var in tf.trainable_variables():
                         tf.summary.histogram(var.name, var)
-                    for grad, var in \
-                            zip(tf.gradients(self.local_AC.loss, tf.trainable_variables(), \
-                                tf.trainable_variables()):
-                        tf.summary.histogram(var.name + "/gradient", grad)
+#                    for grad, var in \
+#                            zip(tf.gradients(self.local_AC.loss, tf.trainable_variables()), \
+#                                tf.trainable_variables()):
+#                        tf.summary.histogram(var.name + "/gradient", grad)
 
                     summary.value.add(tag='Perf/Reward', simple_value=float(mean_reward))
                     summary.value.add(tag='Perf/Length', simple_value=float(mean_length))
