@@ -4,9 +4,11 @@ from tensorflow.contrib.rnn import RNNCell
 
 class EMAcell(RNNCell):
 	"""docstring for EMA"""
-	def __init__(self, inp_size, tao = 1.5):
+	# def __init__(self, inp_size, tao = 1.5):
+	def __init__(self, inp_size, alpha = 1.5):
 		self._input_size = inp_size
-		self.alpha = 1.0/tao
+		self.alpha = alpha
+		# self.alpha = 1.0/tao
 
 	@property
 	def state_size(self):
