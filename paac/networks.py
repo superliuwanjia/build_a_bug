@@ -14,6 +14,7 @@ sys.path.insert(0, '/home/rgoel/drmm/bug')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from retina import *
 from dataLoader import *
+from lenet import *
 
 def flatten(_input):
     shape = _input.get_shape().as_list()
@@ -211,6 +212,41 @@ class NatureNetwork(Network):
 #                 self.output = fc4
 
 
+# class NIPSNetwork(Network):
+#     """docstring for EDRNN"""
+#     def __init__(self, conf):
+#         # super(EDRNN, self).__init__(conf)
+#         super(NIPSNetwork, self).__init__(conf)
+#         print("ho")
+#         self.output_viz_folder = "/home/rgoel/atatri/paac/visualisation"
+
+#         with tf.device(self.device):
+#             with tf.name_scope(self.name):
+#                 inp_shape = self.input.get_shape().as_list()
+#                 print(inp_shape)
+#                 inp = tf.reshape(tf.transpose(self.input,[0,3,1,2]), [-1, inp_shape[3],  inp_shape[1]* inp_shape[2]])
+#                 retina = Retina(inp, inp_shape)
+#                 # inp = tf.reshape(retina.get_output(),[-1, inp_shape[2], inp_shape[3], inp_shape[4]*2])
+#                 inp = retina.get_output()
+#                 # try:
+#                 #     self.output_retina = tf.reshape(tf.transpose(inp,[0,3,1,2]), [inp_shape[3], inp_shape[1], inp_shape[2]])
+#                 # except Exception:
+                    
+#                 self.output_retina = inp
+#                 # print(inp.get_shape())
+#                 # print(hi)
+#                 _, _, conv1 = conv2d('conv1', inp, 32, 8, 8, 4)
+#                 print(conv1.get_shape(),"conv1")
+#                 _, _, conv2 = conv2d('conv2', conv1, 64, 4, 32, 2)
+#                 print(conv2.get_shape(),"conv2")
+#                 _, _, conv3 = conv2d('conv3', conv2, 64, 3, 64, 1)
+#                 print(conv3.get_shape(),"conv3")
+#                 _, _, fc4 = fc('fc4', flatten(conv3), 512, activation="relu")
+#                 # print(hi)
+#                 self.output = fc4
+
+
+
 class NIPSNetwork(Network):
     """docstring for EDRNN"""
     def __init__(self, conf):
@@ -218,28 +254,54 @@ class NIPSNetwork(Network):
         super(NIPSNetwork, self).__init__(conf)
         print("ho")
         self.output_viz_folder = "/home/rgoel/atatri/paac/visualisation"
+        
         with tf.device(self.device):
             with tf.name_scope(self.name):
                 inp_shape = self.input.get_shape().as_list()
                 print(inp_shape)
                 inp = tf.reshape(tf.transpose(self.input,[0,3,1,2]), [-1, inp_shape[3],  inp_shape[1]* inp_shape[2]])
-                retina = Retina(inp, inp_shape)
+                retina = Retina(inp, inp_shape, is_lrcn = True)
+
                 # inp = tf.reshape(retina.get_output(),[-1, inp_shape[2], inp_shape[3], inp_shape[4]*2])
                 inp = retina.get_output()
+                lenet = Lenet(inp)
+                inp = lenet.output
+                new_inp_sh = inp.get_shape().as_list()
+                # print(new_inp_sh)
+                channels = new_inp_sh[-1]
+                inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
+                inp_split = tf.split(inp, channels, axis = 3)
+                outputs = []
+                for channel in range(channels):
+                    with tf.variable_scope("channel_lstm"+str(channel)):
+                        lstm_inp = tf.reshape(inp_split[channel],[-1, inp_shape[-1], new_inp_sh[1]*new_inp_sh[2]])
+                        # print(lstm_inp.get_shape())
+                        lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2])
+                        out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)                     
+                        outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
+                outputs = tf.concat(outputs, axis = 3)
+                # print(outputs.get_shape())
+                # print(hi)
+                # inp = tf.reshape(tf.transpose(tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]]), [0,2,3,4,1]),[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]*inp_shape[-1]])
                 # try:
                 #     self.output_retina = tf.reshape(tf.transpose(inp,[0,3,1,2]), [inp_shape[3], inp_shape[1], inp_shape[2]])
                 # except Exception:
-                    
+                # print(lenet.output.get_shape)
+                # print(go)
                 self.output_retina = inp
                 # print(inp.get_shape())
                 # print(hi)
-                _, _, conv1 = conv2d('conv1', inp, 32, 8, 8, 4)
-                print(conv1.get_shape(),"conv1")
-                _, _, conv2 = conv2d('conv2', conv1, 64, 4, 32, 2)
-                print(conv2.get_shape(),"conv2")
-                _, _, conv3 = conv2d('conv3', conv2, 64, 3, 64, 1)
-                print(conv3.get_shape(),"conv3")
-                _, _, fc4 = fc('fc4', flatten(conv3), 512, activation="relu")
+                # print(inp.get_shape().as_list())
+                # _, _, conv1 = conv2d('conv1', inp, 32, 8, inp.get_shape().as_list()[-1], 4)
+                # print(conv1.get_shape(),"conv1")
+                # _, _, conv2 = conv2d('conv2', conv1, 64, 4, 32, 2)
+                # print(conv2.get_shape(),"conv2")
+                # _, _, conv3 = conv2d('conv3', conv2, 64, 3, 64, 1)
+                # print(conv3.get_shape(),"conv3")
+                _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
+
+                # print(fc4.get_shape())
                 # print(hi)
+
                 self.output = fc4
         

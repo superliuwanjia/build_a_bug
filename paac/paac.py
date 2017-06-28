@@ -39,10 +39,10 @@ class PAACLearner(ActorLearner):
 
         new_actions = np.eye(num_actions)[action_indices]
 
+        # return new_actions, network_output_retina, network_output_v, network_output_pi
         return new_actions, network_output_v, network_output_pi
 
-    def __choose_next_actions(self, states):
-        self.counter += 1
+    def __choose_next_actions(self, states, is_first = 0):
         return PAACLearner.choose_next_actions(self.network, self.num_actions, states, self.session, self.counter)
 
 
@@ -98,7 +98,7 @@ class PAACLearner(ActorLearner):
         global_step_start = self.global_step
 
         total_rewards = []
-
+        is_first = 1
         # state, reward, episode_over, action
         variables = [(np.asarray([emulator.get_initial_state() for emulator in self.emulators], dtype=np.uint8)),
                      (np.zeros(self.emulator_counts, dtype=np.float32)),
