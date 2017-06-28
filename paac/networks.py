@@ -364,7 +364,10 @@ class NIPSNetwork(Network):
                             out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, initial_state = self.h[channel])
                         else:
                             out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
-                            self.h.append(out[:,-1,:])
+                            # print(state[0].get_shape(), out.get_shape())
+
+                            # print(hi)
+                            self.h.append((state, out[:,-1,:]))
                         outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
                 if self.first_time == 1:
                     self.first_time = 0
