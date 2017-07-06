@@ -18,6 +18,24 @@ class PAACLearner(ActorLearner):
         self.workers = args.emulator_workers
         self.counter = 0
 
+    @staticmethod
+    def choose_next_actions_with_viz(network, num_actions, states, session, counter = 0):
+        network_output_v, network_output_pi, network_output_retina,i_hat_s,i_hat_m,i_hat_l = session.run(
+            [network.output_layer_v,
+             network.output_layer_pi,
+             network.output_retina,
+             network.i_hat_s,
+             network.i_hat_m,
+             network.i_hat_l],
+            feed_dict={network.input_ph: states})
+
+        action_indices = PAACLearner.__sample_policy_action(network_output_pi)
+
+        new_actions = np.eye(num_actions)[action_indices]
+
+        return new_actions, network_output_retina, network_output_v, network_output_pi,\
+            i_hat_s,i_hat_m,i_hat_l
+
 
     @staticmethod
     def choose_next_actions(network, num_actions, states, session, is_viz = False, counter = 0):
@@ -183,12 +201,14 @@ class PAACLearner(ActorLearner):
             flat_actions = actions.reshape(max_local_steps * self.emulator_counts, self.num_actions)
 
             lr = self.get_lr()
+            elr = self.get_entropy_lr()
             # print("learning rate is", lr)
             feed_dict = {self.network.input_ph: flat_states,
                          self.network.critic_target_ph: flat_y_batch,
                          self.network.selected_action_ph: flat_actions,
                          self.network.adv_actor_ph: flat_adv_batch,
-                         self.learning_rate: lr}
+                         self.learning_rate: lr,
+                         self.network.entropy_learning_rate: elr}
 
             _, summaries = self.session.run(
                 [self.train_step, summaries_op],

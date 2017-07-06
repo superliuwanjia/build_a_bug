@@ -122,6 +122,7 @@ class Network(object):
         print("fdsfjdsjk")
         with tf.device(self.device):
             with tf.name_scope(self.name):
+                self.entropy_learning_rate = tf.placeholder(tf.float32, shape=[])
                 self.loss_scaling = 5.0
                 self.input_ph = tf.placeholder(tf.uint8, [None, 84, 84, 4], name='input')
                 self.selected_action_ph = tf.placeholder("float32", [None, self.num_actions], name="selected_action")
@@ -430,10 +431,14 @@ class NIPSNetwork(Network):
                 self.i_hat_l = retina.i_hat_lg[:,-1,:]
                 self.sd = retina.i_s
                 # inp = tf.reshape(retina.get_output(),[-1, inp_shape[2], inp_shape[3], inp_shape[4]*2])
+                #inp = retina.get_ema_output()
                 inp = retina.get_output()
                 # print(hi)
                 self.output_retina = inp
 
+                from  tensorflow.contrib.layers import batch_norm
+                inp = batch_norm(inp)
+  
                 
                 lenet = Lenet(inp)
                 inp = lenet.output

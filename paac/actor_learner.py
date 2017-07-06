@@ -19,7 +19,9 @@ class ActorLearner(Process):
         self.max_local_steps = args.max_local_steps
         self.num_actions = args.num_actions
         self.initial_lr = args.initial_lr
+        self.initial_entropy_lr = args.entropy_regularisation_strength
         self.lr_annealing_steps = args.lr_annealing_steps
+        self.entropy_annealing_steps = args.entropy_annealing_steps
         self.emulator_counts = args.emulator_counts
         self.device = args.device
         self.debugging_folder = args.debugging_folder
@@ -121,6 +123,12 @@ class ActorLearner(Process):
             return self.initial_lr - (self.global_step * self.initial_lr / self.lr_annealing_steps)
         else:
             return 0.0
+    def get_entropy_lr(self):
+        if self.global_step <= self.entropy_annealing_steps:
+            return self.initial_entropy_lr - (self.global_step * self.initial_entropy_lr / self.entropy_annealing_steps)
+        else:
+            return 0.0
+
 
     def cleanup(self):
         self.save_vars(True)

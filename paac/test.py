@@ -29,18 +29,19 @@ def get_save_frame(name):
 
 def visualize(states, network_output_retina, counter = 1, name = "viz"):
     dim = (32, 32)
-    # print("dims",dim)
-    output =  '/home/rgoel/drmm/bug'
+    print("dims",dim)
+    output =  '/mnt/nvme0n1/robin/build_a_bug/paac'
     # print("gfjgidofgiodf")
     # open("random.txt","a").write(str(network_output_retina))
+    print(states.shape)
     states = np.transpose(np.reshape(states,(84,84,4)), [2,0,1])
     network_output_retina = np.transpose(np.reshape(network_output_retina,(84,84,8)), [2,0,1])
     on_with_off = np.concatenate([resize_video(states,dim),\
                                   resize_video(network_output_retina[:4,:,:],dim),\
                                   resize_video(network_output_retina[4:,:,:], dim)], axis=2)
-    # save_video(on_with_off, \
-    #             os.path.join(output, name +str(counter) + ".avi"))
-    # print(on_with_off.shape)
+    save_video(on_with_off, \
+                 os.path.join(output, name +str(counter) + ".avi"))
+    print(on_with_off.shape)
     return on_with_off
 
 if __name__ == '__main__':
@@ -48,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--folder', type=str, help="Folder where to save the debugging information.", dest="folder", required=True)
     parser.add_argument('-tc', '--test_count', default='1', type=int, help="The amount of tests to run on the given network", dest="test_count")
     parser.add_argument('-np', '--noops', default=30, type=int, help="Maximum amount of no-ops to use", dest="noops")
-    parser.add_argument('-gn', '--gif_name', default=None, type=str, help="If provided, a gif will be produced and stored with this name", dest="gif_name")
+    parser.add_argument('-gn', '--gif_name', default="original_game_play", type=str, help="If provided, a gif will be produced and stored with this name", dest="gif_name")
     parser.add_argument('-gne', '--gif_name_e', default=None, type=str, help="If provided, a gif will be produced and stored with this name", dest="gif_name_e")
     parser.add_argument('-gf', '--gif_folder', default='', type=str, help="The folder where to save gifs.", dest="gif_folder")
     parser.add_argument('-d', '--device', default='/gpu:0', type=str, help="Device to be used ('/cpu:0', '/gpu:0', '/gpu:1',...)", dest="device")
@@ -85,6 +86,7 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     if 'gpu' in args.device:
         config.gpu_options.allow_growth = True
+    print(args)
     if args.edr_viz:
         edr_outs = get_save_frame(edr_name)
     with tf.Session(config=config) as sess:
@@ -100,13 +102,16 @@ if __name__ == '__main__':
         episodes_over = np.zeros(args.test_count, dtype=np.bool)
         rewards = np.zeros(args.test_count, dtype=np.float32)
         while not all(episodes_over):
-            actions, edr_output, _, _ = PAACLearner.choose_next_actions(network, env_creator.num_actions, states, sess, True)
-            if args.edr_viz:
-                red = visualize(states, edr_output)
-                for i in range(4):
+            actions, edr_output, _, _, r_s,r_m,r_l = PAACLearner.choose_next_actions_with_viz(network, env_creator.num_actions, states, sess, True)
+            #red = visualize(states, edr_output)
+            print("states shape", states.shape)
+            print("r_s", r_s.shape)
+            print("edr output shape",edr_output.shape)
+                #for i in range(4):
                     # print(red[i].shape)
-                    edr_outs(red[i])
+                    #edr_outs(red[i])
             # edr_outs(visualize(states, edr_output))
+            edr_outs(r_s.reshape([84,84]))
             for j, environment in enumerate(environments):
                 state, r, episode_over = environment.next(actions[j])
                 states[j] = state

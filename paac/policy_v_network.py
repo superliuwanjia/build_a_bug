@@ -10,7 +10,8 @@ class PolicyVNetwork(Network):
 
         super(PolicyVNetwork, self).__init__(conf)
 
-        self.entropy_regularisation_strength = conf['entropy_regularisation_strength']
+        #self.entropy_regularisation_strength = conf['entropy_regularisation_strength']
+        self.entropy_regularisation_strength = self.entropy_learning_rate
 
         with tf.device(conf['device']):
             with tf.name_scope(self.name):
