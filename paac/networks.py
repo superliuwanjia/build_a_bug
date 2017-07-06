@@ -437,7 +437,7 @@ class NIPSNetwork(Network):
                 self.output_retina = inp
 
                 from  tensorflow.contrib.layers import batch_norm
-                inp = batch_norm(inp)
+                #inp = batch_norm(inp)
   
                 
                 lenet = Lenet(inp)
