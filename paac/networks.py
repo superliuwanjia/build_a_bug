@@ -119,22 +119,25 @@ class Network(object):
         self.clip_norm = conf['clip_norm']
         self.clip_norm_type = conf['clip_norm_type']
         self.device = conf['device']
-
+        print("fdsfjdsjk")
         with tf.device(self.device):
             with tf.name_scope(self.name):
                 self.loss_scaling = 5.0
                 self.input_ph = tf.placeholder(tf.uint8, [None, 84, 84, 4], name='input')
                 self.selected_action_ph = tf.placeholder("float32", [None, self.num_actions], name="selected_action")
                 self.input = tf.scalar_mul(1.0/255.0, tf.cast(self.input_ph, tf.float32))
+
                 self.i_hat_s = tf.zeros_like(self.input)[:,:,:,0]
-                # print(self.i_hat_s)
-                # print(hi)
                 self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84*84])
                 self.i_hat_m = tf.zeros_like(self.input)[:,:,:,0]
                 self.i_hat_m = tf.reshape(self.i_hat_m, [-1, 84*84])
                 self.i_hat_l = tf.zeros_like(self.input)[:,:,:,0]
                 self.i_hat_l = tf.reshape(self.i_hat_l, [-1, 84*84])
+                # self.retina = Retina(is_lrcn = True, i_hat_lg = self.i_hat_l, i_hat_md = self.i_hat_m, i_hat_sh = self.i_hat_s)
+                
+                # list of hidden states of the channels in the network
                 self.h = []
+
                 # This class should never be used, must be subclassed
 
                 # The output layer
@@ -319,19 +322,99 @@ class NatureNetwork(Network):
 
 
 
+# class NIPSNetwork(Network):
+#     """This is the working version of the edr + lenet + lrcn with the ema calculated for the entire episode"""
+#     def __init__(self, conf):
+#         # super(EDRNN, self).__init__(conf)
+#         super(NIPSNetwork, self).__init__(conf)
+#         # print("ho")
+#         # self.output_viz_folder = "/home/rgoel/atatri/paac/visualisation"
+        
+#         with tf.device(self.device):
+#             with tf.name_scope(self.name):
+#                 inp_shape = self.input.get_shape().as_list()
+#                 # print(inp_shape)
+#                 inp = tf.reshape(tf.transpose(self.input,[0,3,1,2]), [-1, inp_shape[3],  inp_shape[1]* inp_shape[2]])
+#                 if self.first_time == 0:
+#                     #  i_hats keep track of ema till time t-1
+#                     retina = Retina(inp, inp_shape, is_lrcn = True, i_hat_lg = self.i_hat_l, i_hat_md = self.i_hat_m, i_hat_sh = self.i_hat_s)
+#                 else:
+#                     # print("here_shoulnt be called")
+#                     retina = Retina(inp, inp_shape, is_lrcn = True)
+#                     # self.first_time = 0
+#                 # update the i_hats to time t
+#                 self.i_hat_s = retina.i_hat_sh[:,-1:-1,:]
+#                 self.i_hat_m = retina.i_hat_md[:,-1:-1,:]
+#                 self.i_hat_l = retina.i_hat_lg[:,-1:-1,:]
+#                 # inp = tf.reshape(retina.get_output(),[-1, inp_shape[2], inp_shape[3], inp_shape[4]*2])
+#                 inp = retina.get_output()
+
+#                 lenet = Lenet(inp)
+#                 inp = lenet.output
+#                 new_inp_sh = inp.get_shape().as_list()
+                
+#                 # adding per channel lstm
+#                 channels = new_inp_sh[-1]
+#                 inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
+#                 inp_split = tf.split(inp, channels, axis = 3)
+#                 outputs = []
+#                 for channel in range(channels):
+#                     with tf.variable_scope("channel_lstm"+str(channel)):
+#                         lstm_inp = tf.reshape(inp_split[channel],[-1, inp_shape[-1], new_inp_sh[1]*new_inp_sh[2]])
+#                         # print(lstm_inp.get_shape())
+#                         lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2])
+#                         if self.first_time == 0:
+#                             out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, initial_state = self.h[channel])
+#                         else:
+#                             out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+#                             # print(state[0].get_shape(), out.get_shape())
+
+#                             # print(hi)
+#                             self.h.append((state, out[:,-1,:]))
+#                         outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
+#                 if self.first_time == 1:
+#                     self.first_time = 0
+#                 # print(self.h[0].get_shape())
+#                 # print(hi)
+#                 outputs = tf.concat(outputs, axis = 3)
+#                 # print(outputs.get_shape())
+#                 # print(hi)
+#                 # inp = tf.reshape(tf.transpose(tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]]), [0,2,3,4,1]),[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]*inp_shape[-1]])
+#                 # try:
+#                 #     self.output_retina = tf.reshape(tf.transpose(inp,[0,3,1,2]), [inp_shape[3], inp_shape[1], inp_shape[2]])
+#                 # except Exception:
+#                 # print(lenet.output.get_shape)
+#                 # print(go)
+#                 self.output_retina = inp
+#                 # print(inp.get_shape())
+#                 # print(hi)
+#                 # print(inp.get_shape().as_list())
+#                 # _, _, conv1 = conv2d('conv1', inp, 32, 8, inp.get_shape().as_list()[-1], 4)
+#                 # print(conv1.get_shape(),"conv1")
+#                 # _, _, conv2 = conv2d('conv2', conv1, 64, 4, 32, 2)
+#                 # print(conv2.get_shape(),"conv2")
+#                 # _, _, conv3 = conv2d('conv3', conv2, 64, 3, 64, 1)
+#                 # print(conv3.get_shape(),"conv3")
+#                 _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
+
+#                 # print(fc4.get_shape())
+#                 # print(hi)
+
+#                 self.output = fc4
+
+
+
+
 class NIPSNetwork(Network):
     """This is the working version of the edr + lenet + lrcn with the ema calculated for the entire episode"""
     def __init__(self, conf):
-        # super(EDRNN, self).__init__(conf)
-        super(NIPSNetwork, self).__init__(conf)
-        # print("ho")
-        # self.output_viz_folder = "/home/rgoel/atatri/paac/visualisation"
-        
+        super(NIPSNetwork, self).__init__(conf)   
         with tf.device(self.device):
             with tf.name_scope(self.name):
-                inp_shape = self.input.get_shape().as_list()
-                # print(inp_shape)
+
+                inp_shape = self.input.get_shape().as_list() #actual input shape
                 inp = tf.reshape(tf.transpose(self.input,[0,3,1,2]), [-1, inp_shape[3],  inp_shape[1]* inp_shape[2]])
+
                 if self.first_time == 0:
                     #  i_hats keep track of ema till time t-1
                     retina = Retina(inp, inp_shape, is_lrcn = True, i_hat_lg = self.i_hat_l, i_hat_md = self.i_hat_m, i_hat_sh = self.i_hat_s)
@@ -340,20 +423,27 @@ class NIPSNetwork(Network):
                     retina = Retina(inp, inp_shape, is_lrcn = True)
                     # self.first_time = 0
                 # update the i_hats to time t
-                self.i_hat_s = retina.i_hat_sh[:,-1:-1,:]
-                self.i_hat_m = retina.i_hat_md[:,-1:-1,:]
-                self.i_hat_l = retina.i_hat_lg[:,-1:-1,:]
+                print(retina.r_x.get_shape())
+                # print(hi)
+                self.i_hat_s = retina.i_hat_sh[:,-1,:]
+                self.i_hat_m = retina.i_hat_md[:,-1,:]
+                self.i_hat_l = retina.i_hat_lg[:,-1,:]
+                self.sd = retina.i_s
                 # inp = tf.reshape(retina.get_output(),[-1, inp_shape[2], inp_shape[3], inp_shape[4]*2])
                 inp = retina.get_output()
+                # print(hi)
+                self.output_retina = inp
 
+                
                 lenet = Lenet(inp)
                 inp = lenet.output
-                new_inp_sh = inp.get_shape().as_list()
-                
+                new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
+
                 # adding per channel lstm
                 channels = new_inp_sh[-1]
                 inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
                 inp_split = tf.split(inp, channels, axis = 3)
+                self.lenet_output = inp
                 outputs = []
                 for channel in range(channels):
                     with tf.variable_scope("channel_lstm"+str(channel)):
@@ -371,30 +461,9 @@ class NIPSNetwork(Network):
                         outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
                 if self.first_time == 1:
                     self.first_time = 0
-                # print(self.h[0].get_shape())
-                # print(hi)
                 outputs = tf.concat(outputs, axis = 3)
-                # print(outputs.get_shape())
+                self.lstm_output = outputs
+                print(outputs.get_shape())
                 # print(hi)
-                # inp = tf.reshape(tf.transpose(tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]]), [0,2,3,4,1]),[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]*inp_shape[-1]])
-                # try:
-                #     self.output_retina = tf.reshape(tf.transpose(inp,[0,3,1,2]), [inp_shape[3], inp_shape[1], inp_shape[2]])
-                # except Exception:
-                # print(lenet.output.get_shape)
-                # print(go)
-                self.output_retina = inp
-                # print(inp.get_shape())
-                # print(hi)
-                # print(inp.get_shape().as_list())
-                # _, _, conv1 = conv2d('conv1', inp, 32, 8, inp.get_shape().as_list()[-1], 4)
-                # print(conv1.get_shape(),"conv1")
-                # _, _, conv2 = conv2d('conv2', conv1, 64, 4, 32, 2)
-                # print(conv2.get_shape(),"conv2")
-                # _, _, conv3 = conv2d('conv3', conv2, 64, 3, 64, 1)
-                # print(conv3.get_shape(),"conv3")
                 _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
-
-                # print(fc4.get_shape())
-                # print(hi)
-
                 self.output = fc4
