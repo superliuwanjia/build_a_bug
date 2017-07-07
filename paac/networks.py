@@ -8,7 +8,7 @@ import os
 # from model_v2 import *
 
 sys.path.insert(0, '/home/rgoel/drmm/theano_implementation/drmm_tensorflow')
-sys.path.insert(0, '/home/rgoel/drmm/EDRNN')
+sys.path.insert(0, '/mnt/nvme0n1/robin/build_a_bug/EDRNN')
 sys.path.insert(0, '/home/rgoel/drmm/bug')
 # sys.path.insert(0, '/home/rgoel/drmm/bug')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -127,7 +127,6 @@ class Network(object):
                 self.input_ph = tf.placeholder(tf.uint8, [None, 84, 84, 4], name='input')
                 self.selected_action_ph = tf.placeholder("float32", [None, self.num_actions], name="selected_action")
                 self.input = tf.scalar_mul(1.0/255.0, tf.cast(self.input_ph, tf.float32))
-
                 self.i_hat_s = tf.zeros_like(self.input)[:,:,:,0]
                 self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84*84])
                 self.i_hat_m = tf.zeros_like(self.input)[:,:,:,0]
@@ -414,12 +413,15 @@ class NIPSNetwork(Network):
             with tf.name_scope(self.name):
 
                 inp_shape = self.input.get_shape().as_list() #actual input shape
+                print("input shape in network", inp_shape)
                 inp = tf.reshape(tf.transpose(self.input,[0,3,1,2]), [-1, inp_shape[3],  inp_shape[1]* inp_shape[2]])
 
                 if self.first_time == 0:
+                    print("here0")
                     #  i_hats keep track of ema till time t-1
                     retina = Retina(inp, inp_shape, is_lrcn = True, i_hat_lg = self.i_hat_l, i_hat_md = self.i_hat_m, i_hat_sh = self.i_hat_s)
                 else:
+                    print("here1")
                     # print("here_shoulnt be called")
                     retina = Retina(inp, inp_shape, is_lrcn = True)
                     # self.first_time = 0
@@ -432,15 +434,17 @@ class NIPSNetwork(Network):
                 self.sd = retina.i_s
                 # inp = tf.reshape(retina.get_output(),[-1, inp_shape[2], inp_shape[3], inp_shape[4]*2])
                 #inp = retina.get_ema_output()
-                inp = retina.get_output()
+                #inp = retina.get_output()
+                inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2],1])
                 # print(hi)
                 self.output_retina = inp
 
                 from  tensorflow.contrib.layers import batch_norm
-                #inp = batch_norm(inp)
+                inp = batch_norm(inp)
   
-                
-                lenet = Lenet(inp)
+                print("retina output shape",self.output_retina.get_shape().as_list())
+                #lenet = Lenet(inp)
+                lenet = Lenet(inp, conv_filters = [[5, 5, 1, 6], [5, 5, 6, 16]])
                 inp = lenet.output
                 new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
 
