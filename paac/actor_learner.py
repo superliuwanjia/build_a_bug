@@ -22,6 +22,7 @@ class ActorLearner(Process):
         self.initial_entropy_lr = args.entropy_regularisation_strength
         self.lr_annealing_steps = args.lr_annealing_steps
         self.entropy_annealing_steps = args.entropy_annealing_steps
+        self.entropy_annealing_enable = args.entropy_annealing_enable
         self.emulator_counts = args.emulator_counts
         self.device = args.device
         self.debugging_folder = args.debugging_folder
@@ -124,6 +125,8 @@ class ActorLearner(Process):
         else:
             return 0.0
     def get_entropy_lr(self):
+        if not self.entropy_annealing_enable:
+            return self.initial_entropy_lr
         if self.global_step <= self.entropy_annealing_steps:
             return self.initial_entropy_lr - (self.global_step * self.initial_entropy_lr / self.entropy_annealing_steps)
         else:
