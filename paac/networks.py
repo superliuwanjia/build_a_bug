@@ -447,30 +447,34 @@ class NIPSNetwork(Network):
                 lenet = Lenet(inp, conv_filters = [[5, 5, 1, 6], [5, 5, 6, 16]])
                 inp = lenet.output
                 new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
-
-                # adding per channel lstm
-                channels = new_inp_sh[-1]
-                inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
-                inp_split = tf.split(inp, channels, axis = 3)
                 self.lenet_output = inp
-                outputs = []
-                for channel in range(channels):
-                    with tf.variable_scope("channel_lstm"+str(channel)):
-                        lstm_inp = tf.reshape(inp_split[channel],[-1, inp_shape[-1], new_inp_sh[1]*new_inp_sh[2]])
-                        # print(lstm_inp.get_shape())
-                        lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2])
-                        if self.first_time == 0:
-                            out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, initial_state = self.h[channel])
-                        else:
-                            out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
-                            # print(state[0].get_shape(), out.get_shape())
 
-                            # print(hi)
-                            self.h.append((state, out[:,-1,:]))
-                        outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
-                if self.first_time == 1:
-                    self.first_time = 0
-                outputs = tf.concat(outputs, axis = 3)
+                # adding per channel lstm/ simple LSTM
+                if conf["per_channel"]:
+                    channels = new_inp_sh[-1]
+                    inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
+                    inp_split = tf.split(inp, channels, axis = 3)
+                    outputs = []
+                    for channel in range(channels):
+                        with tf.variable_scope("channel_lstm"+str(channel)):
+                            lstm_inp = tf.reshape(inp_split[channel],[-1, inp_shape[-1], new_inp_sh[1]*new_inp_sh[2]])
+                            # print(lstm_inp.get_shape())
+                            lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2])
+                            if self.first_time == 0:
+                                out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, initial_state = self.h[channel])
+                            else:
+                                out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+                                # print(state[0].get_shape(), out.get_shape())
+
+                                # print(hi)
+                                self.h.append((state, out[:,-1,:]))
+                            outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
+                    outputs = tf.concat(outputs, axis = 3)
+                else:
+                    lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
+                    lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
+                    out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+                    outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
                 self.lstm_output = outputs
                 print(outputs.get_shape())
                 # print(hi)
