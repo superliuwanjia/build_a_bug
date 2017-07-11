@@ -103,15 +103,18 @@ class Retina():
  -                    + self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg))
 
         # Code for normalization
+
         # log_sh = tf.log(tf.divide(self.input, self.i_hat_sh))
-        # log_norm_sh = log_sh - tf.reduce_mean(log_sh, 1, keep_dims=True)
+        # mean_sh, var_sh = tf.nn.moments(log_sh, [1], keep_dims=True)
+        # normalized_sh = tf.div(tf.subtract(log_sh, mean_sh), tf.sqrt(var_sh))
 
         # log_md = tf.log(tf.divide(self.input, self.i_hat_md))
-        # log_norm_md = log_md - tf.reduce_mean(log_md, 1, keep_dims=True)
+        # mean_md, var_md = tf.nn.moments(log_md, [1], keep_dims=True)
+        # normalized_md = tf.div(tf.subtract(log_md, mean_md), tf.sqrt(var_md))
 
         # log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
-        # log_norm_lg = log_lg - tf.reduce_mean(log_lg, 1, keep_dims=True)
-        # self.r_x = self.beta[0]*log_norm_sh + self.beta[1]*log_norm_md + self.beta[2]*log_norm_lg
+        # mean_lg, var_lg = tf.nn.moments(log_lg, [1], keep_dims=True)
+        # normalized_lg = tf.div(tf.subtract(log_lg, mean_lg), tf.sqrt(var_lg))
          
     def threshold(self, is_lrcn = False):
         if is_lrcn:
