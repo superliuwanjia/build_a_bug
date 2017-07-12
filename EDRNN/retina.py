@@ -51,8 +51,8 @@ class Retina():
         self.beta = [self.beta_s, self.beta_m, self.beta_l]
         #self.mu_off = tf.Variable(1.0)
         #self.mu_on= tf.Variable(-1.0)
-        self.mu_off = 1.0
-        self.mu_on= -1.0
+        self.mu_off = 1.96
+        self.mu_on = 1.96
         # self.mu_on= 1.0
         # print(self.mu_on)
         # print(li)
@@ -77,7 +77,7 @@ class Retina():
         else:
             state_sh = self.input[:,0,:]
         outputs_sh, state_sh = tf.nn.dynamic_rnn(ema_cell_sh, self.input, initial_state = state_sh)
-        self.i_hat_sh = outputs_sh  
+        self.i_hat_sh = outputs_sh + 1e-7
 
         ema_cell_md = EMAcell(self.hidden_units, self.alphas[1])
         if self.i_m is not None:
@@ -86,7 +86,7 @@ class Retina():
             state_md = self.input[:,0,:]
         
         outputs_md, state_md = tf.nn.dynamic_rnn(ema_cell_md, self.input, initial_state = state_md)
-        self.i_hat_md = outputs_md
+        self.i_hat_md = outputs_md  + 1e-7
         
 
         ema_cell_lg = EMAcell(self.hidden_units, self.alphas[2])
@@ -95,26 +95,28 @@ class Retina():
         else:
             state_lg = self.input[:,0,:]
         outputs_lg, state_lg = tf.nn.dynamic_rnn(ema_cell_lg, self.input, initial_state = state_lg)
-        self.i_hat_lg = outputs_lg
+        self.i_hat_lg = outputs_lg + 1e-7
         
 
     def get_rel_changes(self):
-        self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh)) + self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md))\
- -                    + self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg))
+        # self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh)) + self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md))\
+        #             + self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg))
 
         # Code for normalization
 
-        # log_sh = tf.log(tf.divide(self.input, self.i_hat_sh))
-        # mean_sh, var_sh = tf.nn.moments(log_sh, [1], keep_dims=True)
-        # normalized_sh = tf.div(tf.subtract(log_sh, mean_sh), tf.sqrt(var_sh))
+        log_sh = tf.log(tf.divide(self.input, self.i_hat_sh))
+        mean_sh, var_sh = tf.nn.moments(log_sh, [2], keep_dims=True)
+        normalized_sh = tf.divide(tf.subtract(log_sh, mean_sh), tf.sqrt(var_sh+1e-7))
 
-        # log_md = tf.log(tf.divide(self.input, self.i_hat_md))
-        # mean_md, var_md = tf.nn.moments(log_md, [1], keep_dims=True)
-        # normalized_md = tf.div(tf.subtract(log_md, mean_md), tf.sqrt(var_md))
+        log_md = tf.log(tf.divide(self.input, self.i_hat_md))
+        mean_md, var_md = tf.nn.moments(log_md, [2], keep_dims=True)
+        normalized_md = tf.divide(tf.subtract(log_md, mean_md), tf.sqrt(var_md+1e-7))
 
-        # log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
-        # mean_lg, var_lg = tf.nn.moments(log_lg, [1], keep_dims=True)
-        # normalized_lg = tf.div(tf.subtract(log_lg, mean_lg), tf.sqrt(var_lg))
+        log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
+        mean_lg, var_lg = tf.nn.moments(log_lg, [2], keep_dims=True)
+        normalized_lg = tf.divide(tf.subtract(log_lg, mean_lg), tf.sqrt(var_lg+1e-7))
+
+        self.r_x = self.beta[0] * normalized_sh + self.beta[1] * normalized_md + self.beta[2] * normalized_lg
          
     def threshold(self, is_lrcn = False):
         if is_lrcn:
@@ -124,10 +126,10 @@ class Retina():
             self.out = tf.reshape(tf.concat([e_on, e_off], axis = 4),[-1, self.inp_size[1], self.inp_size[2], 2])
         else:
             # if we are not using lrcn we can use the frames as channels.
-            e_on = tf.reshape(tf.transpose(tf.nn.relu(self.r_x - (1 + self.mu_on)),[0, 2, 1]),[-1, self.inp_size[1], self.inp_size[2], self.inp_size[3]])
-            e_off = tf.reshape(tf.transpose(tf.nn.relu(-(self.r_x - (1 - self.mu_off))),[0, 2, 1]), [-1, self.inp_size[1], self.inp_size[2], self.inp_size[3]])
+            e_on = tf.reshape(tf.nn.relu(self.r_x - self.mu_on),[-1, self.inp_size[1], self.inp_size[2], self.inp_size[3],self.inp_size[4]])
+            e_off = tf.reshape(tf.nn.relu(-(self.r_x + self.mu_off)), [-1, self.inp_size[1], self.inp_size[2], self.inp_size[3], self.inp_size[4]])
             print(e_on.get_shape(), e_off.get_shape())        
-            self.out = tf.concat([e_on, e_off], axis = 3)    
+            self.out = tf.concat([e_on, e_off], axis = 4)    
         # self.out = tf.stack([e_on, e_off], axis = 2)    
         # print(self.out.get_shape(),"here111")
         # except Exception:
