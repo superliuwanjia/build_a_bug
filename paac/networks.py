@@ -1,4 +1,5 @@
 import tensorflow as tf
+from  tensorflow.contrib.layers import batch_norm, layer_norm
 import logging
 import numpy as np
 
@@ -8,7 +9,7 @@ import os
 # from model_v2 import *
 
 sys.path.insert(0, '/home/rgoel/drmm/theano_implementation/drmm_tensorflow')
-sys.path.insert(0, '/mnt/nvme0n1/robin/build_a_bug/EDRNN')
+sys.path.insert(0, '/mnt/group3/ucnn/robin/build_a_bug/EDRNN')
 sys.path.insert(0, '/home/rgoel/drmm/bug')
 # sys.path.insert(0, '/home/rgoel/drmm/bug')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -119,7 +120,7 @@ class Network(object):
         self.clip_norm = conf['clip_norm']
         self.clip_norm_type = conf['clip_norm_type']
         self.device = conf['device']
-        print("fdsfjdsjk")
+        self.config = conf
         with tf.device(self.device):
             with tf.name_scope(self.name):
                 self.entropy_learning_rate = tf.placeholder(tf.float32, shape=[])
@@ -128,17 +129,17 @@ class Network(object):
                 self.selected_action_ph = tf.placeholder("float32", [None, self.num_actions], name="selected_action")
                 self.input = tf.scalar_mul(1.0/255.0, tf.cast(self.input_ph, tf.float32))
                 # zero out
-                self.mask = tf.concat([tf.zeros_like(self.input[:,:,:,0:1]),
-                                       tf.ones_like(self.input[:,:,:,1:2]),
-                                       tf.ones_like(self.input[:,:,:,2:3]),
-                                       tf.ones_like(self.input[:,:,:,3:4])], axis=3)
+                #self.mask = tf.concat([tf.zeros_like(self.input[:,:,:,0:1]),
+                #                       tf.ones_like(self.input[:,:,:,1:2]),
+                #                       tf.ones_like(self.input[:,:,:,2:3]),
+                #                       tf.ones_like(self.input[:,:,:,3:4])], axis=3)
                 #self.input = tf.multiply(self.input, self.mask)
 
-                self.i_hat_s = tf.zeros_like(self.input)[:,:,:,3]
+                self.i_hat_s = tf.zeros_like(self.input)[:,:,:,0]
                 self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84*84])
-                self.i_hat_m = tf.zeros_like(self.input)[:,:,:,3]
+                self.i_hat_m = tf.zeros_like(self.input)[:,:,:,0]
                 self.i_hat_m = tf.reshape(self.i_hat_m, [-1, 84*84])
-                self.i_hat_l = tf.zeros_like(self.input)[:,:,:,3]
+                self.i_hat_l = tf.zeros_like(self.input)[:,:,:,0]
                 self.i_hat_l = tf.reshape(self.i_hat_l, [-1, 84*84])
                 # self.retina = Retina(is_lrcn = True, i_hat_lg = self.i_hat_l, i_hat_md = self.i_hat_m, i_hat_sh = self.i_hat_s)
                 
@@ -433,26 +434,46 @@ class NIPSNetwork(Network):
                     retina = Retina(inp, inp_shape, is_lrcn = True)
                     # self.first_time = 0
                 # update the i_hats to time t
-                print(retina.r_x.get_shape())
+                #print(retina.r_x.get_shape())
                 # print(hi)
                 self.i_hat_s = retina.i_hat_sh[:,-1,:]
                 self.i_hat_m = retina.i_hat_md[:,-1,:]
                 self.i_hat_l = retina.i_hat_lg[:,-1,:]
                 self.sd = retina.i_s
-                #inp = retina.get_ema_output()
-                inp = retina.get_output()
-                # non retina
-                #inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2],1])
-                # print(hi)
-                self.output_retina = inp
 
-                from  tensorflow.contrib.layers import batch_norm
-                #inp = batch_norm(inp)
-  
-                print("retina output shape",self.output_retina.get_shape().as_list())
-                lenet = Lenet(inp)
-                #lenet = Lenet(inp, conv_filters = [[5, 5, 1, 6], [5, 5, 6, 16]])
-                inp = lenet.output
+
+                channel = 1
+                if conf["event"] == "off":
+                    inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2],1])
+                else:
+                    if conf["event_type"] == "ema":
+                        event = retina.get_output()
+                        event_channel = 2
+                    elif conf["event_type"] == "diff":
+                        event = tf.transpose(self.input,[0,3,1,2])
+                        event = tf.concat([event[:,0:1,:,:], event[:,1:2,:,:] - event[:,0:1,:,:],
+                        event[:,2:3,:,:]-event[:,1:2,:,:],event[:,3:4,:,:]-event[:,2:3,:,:]], axis=1)
+                        event = tf.reshape(inp, [-1,event_shape[1], event_shape[2],1])
+                        event_channel = 1
+                    if conf["event"] == "both":
+                        inp = tf.concat([event, tf.reshape(tf.transpose(self.input, [0,3,1,2]), [-1, inp_shape[1], inp_shape[2],1])], axis=3)
+                        channel += event_channel
+                    elif conf["event"] == "on":
+                        inp = event
+                        channel = event_channel
+
+                    self.output_event = inp
+
+                if conf["batch_norm"]:
+                    inp = batch_norm(inp)
+
+                if conf["norm"] == "ln":
+                    inp = layer_norm(inp)
+
+                if conf["convnet"]:
+                    lenet = Lenet(inp, conv_filters = [[5, 5, channel, 6], [5, 5, 6, 16]])
+                    inp = lenet.output
+                
                 new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
                 self.lenet_output = inp
 
