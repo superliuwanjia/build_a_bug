@@ -30,7 +30,7 @@ def get_save_frame(name):
 def visualize(states, network_output_retina, counter = 1, name = "viz"):
     dim = (32, 32)
     print("dims",dim)
-    output =  '/mnt/nvme0n1/robin/build_a_bug/paac'
+    output =  '/mnt/group3/ucnn/robin/build_a_bug/paac'
     # print("gfjgidofgiodf")
     # open("random.txt","a").write(str(network_output_retina))
     print(states.shape)
@@ -107,7 +107,8 @@ if __name__ == '__main__':
             #print("states shape", states.shape)
             #print("r_s", r_s.shape)
             #print("edr output shape",edr_output.shape)
-            edr_outs(edr_output[3,:,:,0].reshape([84,84]))
+            if args.edr_viz:
+                edr_outs(edr_output[3,:,:,0].reshape([84,84]))
             # edr_outs(visualize(states, edr_output))
             #edr_outs(r_s.reshape([84,84]))
             for j, environment in enumerate(environments):

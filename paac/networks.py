@@ -453,7 +453,7 @@ class NIPSNetwork(Network):
                         event = tf.transpose(self.input,[0,3,1,2])
                         event = tf.concat([event[:,0:1,:,:], event[:,1:2,:,:] - event[:,0:1,:,:],
                         event[:,2:3,:,:]-event[:,1:2,:,:],event[:,3:4,:,:]-event[:,2:3,:,:]], axis=1)
-                        event = tf.reshape(inp, [-1,event_shape[1], event_shape[2],1])
+                        event = tf.reshape(inp, [-1,inp_shape[1], inp_shape[2],1])
                         event_channel = 1
                     if conf["event"] == "both":
                         inp = tf.concat([event, tf.reshape(tf.transpose(self.input, [0,3,1,2]), [-1, inp_shape[1], inp_shape[2],1])], axis=3)
@@ -462,7 +462,7 @@ class NIPSNetwork(Network):
                         inp = event
                         channel = event_channel
 
-                    self.output_event = inp
+                self.output_retina = inp
 
                 if conf["batch_norm"]:
                     inp = batch_norm(inp)

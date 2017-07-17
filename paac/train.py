@@ -70,6 +70,11 @@ def get_network_and_environment_creator(args, random_seed=3):
         copied_network_conf = copy.copy(network_conf)
         copied_network_conf['name'] = name
         #copied_network_conf['per_channel'] = False
+        #copied_network_conf['event'] = "off"
+        #copied_network_conf['convnet'] = True
+        #copied_network_conf['batch_norm'] = True 
+        #copied_network_conf['norm'] = ""
+        #copied_network_conf['event_type'] = "diff"
         return network(copied_network_conf)
 
     return network_creator, env_creator
@@ -102,11 +107,11 @@ def get_arg_parser():
     parser.add_argument('-df', '--debugging_folder', default='logs/', type=str, help="Folder where to save the debugging information.", dest="debugging_folder")
     parser.add_argument('-rs', '--random_start', default=True, type=bool_arg, help="Whether or not to start with 30 noops for each env. Default True", dest="random_start")
     parser.add_argument('-pc', '--per_channel', default=False, type=bool_arg, help="Per channel LSTM or all channel lstm", dest="per_channel")
-    parser.add_argument('-ep', '--event', default=True, type=bool_arg, help="Event enable", dest="event")
+    parser.add_argument('-ep', '--event', default="both", type=str, help="Event enable, on, off,both", dest="event")
     parser.add_argument('-et', '--event_type', default='diff', type=str, help="Event type, possible configs: ema, diff", dest="event_type")
     parser.add_argument('-cn', '--convnet', default=True, type=bool_arg, help="Convnet enable or not", dest="convnet")
     parser.add_argument('-bn', '--batch_norm', default=True, type=bool_arg, help="batch_norm", dest="batch_norm")  
-    parser.add_argument('-norm', '--additional_norm', default="ln", type=str, help="additional normaliation, ln and dn", dest="norm") 
+    parser.add_argument('-norm', '--additional_norm', default="", type=str, help="additional normaliation, non or ln and dn", dest="norm") 
     return parser
 
 
