@@ -69,12 +69,13 @@ def get_network_and_environment_creator(args, random_seed=3):
         nonlocal network_conf
         copied_network_conf = copy.copy(network_conf)
         copied_network_conf['name'] = name
-        #copied_network_conf['per_channel'] = False
-        #copied_network_conf['event'] = "off"
-        #copied_network_conf['convnet'] = True
-        #copied_network_conf['batch_norm'] = True 
-        #copied_network_conf['norm'] = ""
-        #copied_network_conf['event_type'] = "diff"
+        copied_network_conf['event'] = args.event
+        copied_network_conf['event_type'] = args.event_type
+        copied_network_conf['per_channel'] = args.per_channel
+        copied_network_conf['batch_norm'] = args.batch_norm
+        copied_network_conf['norm'] = args.norm
+        copied_network_conf['convnet'] = args.convnet
+        copied_network_conf['is_noisy'] = args.is_noisy
         return network(copied_network_conf)
 
     return network_creator, env_creator
@@ -112,6 +113,7 @@ def get_arg_parser():
     parser.add_argument('-cn', '--convnet', default=True, type=bool_arg, help="Convnet enable or not", dest="convnet")
     parser.add_argument('-bn', '--batch_norm', default=True, type=bool_arg, help="batch_norm", dest="batch_norm")  
     parser.add_argument('-norm', '--additional_norm', default="", type=str, help="additional normaliation, non or ln and dn", dest="norm") 
+    parser.add_argument('-in', '--is_noisy', default=False, type=bool_arg, help="add noise to the input", dest="is_noisy") 
     return parser
 
 

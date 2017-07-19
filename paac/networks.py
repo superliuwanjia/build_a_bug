@@ -419,6 +419,10 @@ class NIPSNetwork(Network):
         super(NIPSNetwork, self).__init__(conf)   
         with tf.device(self.device):
             with tf.name_scope(self.name):
+                if conf['is_noisy']:
+                    print("using is noisy")
+                    self.input = tf.random_normal(shape=tf.shape(input_layer), mean=0.0, stddev=0.2, dtype=tf.float32) + self.input
+                
 
                 inp_shape = self.input.get_shape().as_list() #actual input shape
                 print("input shape in network", inp_shape)
@@ -441,15 +445,18 @@ class NIPSNetwork(Network):
                 self.i_hat_l = retina.i_hat_lg[:,-1,:]
                 self.sd = retina.i_s
 
-
+                print("cong event_type1", conf['event_type'])
                 channel = 1
                 if conf["event"] == "off":
+                    print("using jsut frames")
                     inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2],1])
                 else:
                     if conf["event_type"] == "ema":
+                        print("ema type1")
                         event = retina.get_output()
                         event_channel = 2
                     elif conf["event_type"] == "diff":
+                        print("diff type1")
                         event = tf.transpose(self.input,[0,3,1,2])
                         event = tf.concat([event[:,0:1,:,:], event[:,1:2,:,:] - event[:,0:1,:,:],
                         event[:,2:3,:,:]-event[:,1:2,:,:],event[:,3:4,:,:]-event[:,2:3,:,:]], axis=1)
@@ -463,22 +470,27 @@ class NIPSNetwork(Network):
                         channel = event_channel
 
                 self.output_retina = inp
-
+                print("retina output shape", inp.get_shape())
                 if conf["batch_norm"]:
+                    print("using BN")
                     inp = batch_norm(inp)
 
                 if conf["norm"] == "ln":
+                    print("using LN")
                     inp = layer_norm(inp)
 
                 if conf["convnet"]:
+                    print("using a convnet")
                     lenet = Lenet(inp, conv_filters = [[5, 5, channel, 6], [5, 5, 6, 16]])
                     inp = lenet.output
+                    print("convent output shape",inp.get_shape())
                 
                 new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
                 self.lenet_output = inp
 
                 # adding per channel lstm/ simple LSTM
                 if conf["per_channel"]:
+                    print("using per channel")
                     channels = new_inp_sh[-1]
                     inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
                     inp_split = tf.split(inp, channels, axis = 3)
@@ -499,12 +511,13 @@ class NIPSNetwork(Network):
                             outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
                     outputs = tf.concat(outputs, axis = 3)
                 else:
+                    print("using full channel")
                     lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
                     lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
                     out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
                     outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
                 self.lstm_output = outputs
-                print(outputs.get_shape())
+                print("output of lstm shape ",outputs.get_shape())
                 # print(hi)
                 _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
                 self.output = fc4
