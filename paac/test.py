@@ -17,7 +17,7 @@ from dataLoader import *
 def get_save_frame(name):
     import imageio
 
-    writer = imageio.get_writer(name + '.gif', fps=30)
+    writer = imageio.get_writer(name + '.gif', fps=12)
 
     def get_frame(frame):
         # print(frame.shape)
@@ -30,7 +30,7 @@ def get_save_frame(name):
 def visualize(states, network_output_retina, counter = 1, name = "viz"):
     dim = (32, 32)
     print("dims",dim)
-    output =  '/mnt/nvme0n1/robin/build_a_bug/paac'
+    output =  '/mnt/group3/ucnn/robin/build_a_bug/paac'
     # print("gfjgidofgiodf")
     # open("random.txt","a").write(str(network_output_retina))
     print(states.shape)
@@ -104,14 +104,13 @@ if __name__ == '__main__':
         while not all(episodes_over):
             actions, edr_output, _, _, r_s,r_m,r_l = PAACLearner.choose_next_actions_with_viz(network, env_creator.num_actions, states, sess, True)
             #red = visualize(states, edr_output)
-            print("states shape", states.shape)
-            print("r_s", r_s.shape)
-            print("edr output shape",edr_output.shape)
-                #for i in range(4):
-                    # print(red[i].shape)
-                    #edr_outs(red[i])
+            #print("states shape", states.shape)
+            #print("r_s", r_s.shape)
+            #print("edr output shape",edr_output.shape)
+            if args.edr_viz:
+                edr_outs(edr_output[3,:,:,0].reshape([84,84]))
             # edr_outs(visualize(states, edr_output))
-            edr_outs(r_s.reshape([84,84]))
+            #edr_outs(r_s.reshape([84,84]))
             for j, environment in enumerate(environments):
                 state, r, episode_over = environment.next(actions[j])
                 states[j] = state

@@ -1,12 +1,13 @@
 import tensorflow as tf
 from rnn_cell import EMAcell
-
+from rnn_cell import Differencecell   
 
 class Retina():
     """docstring for Retina"""
     def __init__(self, inp, inp_size, beta = [0.5, 0.7, 0.9], alphas = [1.5, 2.0, 2.5], mu_off = 0.01, mu_on = 0.01, is_lrcn = False, i_hat_lg = None,
                 i_hat_md = None, i_hat_sh = None):
         self.inp_size = inp_size
+        self.eps=1e-6
         # self.beta = tf.Variable(tf.random_normal[])
         # self.beta = beta
         # self.alphas = alphas
@@ -24,6 +25,7 @@ class Retina():
         self.i_s = i_hat_sh
         self.i_m = i_hat_md
         self.i_l = i_hat_lg
+
         self.create_vars()
         self.get_ema()
         self.get_rel_changes()
@@ -53,6 +55,9 @@ class Retina():
         #self.mu_on= tf.Variable(-1.0)
         self.mu_off = 0.5
         self.mu_on = 0.5
+        # self.mu_diff = 0.2
+        # self.mu_off = 1.0
+        # self.mu_on= -1.0
         # self.mu_on= 1.0
         # print(self.mu_on)
         # print(li)
@@ -70,7 +75,6 @@ class Retina():
         print("here")
 
     def get_ema(self):
-
         ema_cell_sh = EMAcell(self.hidden_units, self.alphas[0])
         if self.i_s is not None:
             state_sh = self.i_s
@@ -99,8 +103,8 @@ class Retina():
         
 
     def get_rel_changes(self):
-        # self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh)) + self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md))\
-        #             + self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg))
+        self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh+self.eps)) + self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md+self.eps))\
+                     + self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg+self.eps))
 
         # Code for normalization
 
@@ -108,18 +112,23 @@ class Retina():
         mean_sh, var_sh = tf.nn.moments(log_sh, [2], keep_dims=True)
         normalized_sh = tf.divide(tf.subtract(log_sh, mean_sh), tf.sqrt(var_sh+1e-7))
 
-        log_md = tf.log(tf.divide(self.input, self.i_hat_md))
-        mean_md, var_md = tf.nn.moments(log_md, [2], keep_dims=True)
-        normalized_md = tf.divide(tf.subtract(log_md, mean_md), tf.sqrt(var_md+1e-7))
+        # log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
+        # log_norm_lg = log_lg - tf.reduce_mean(log_lg, 1, keep_dims=True)
+        # self.r_x = self.beta[0]*log_norm_sh + self.beta[1]*log_norm_md + self.beta[2]*log_norm_lg
 
-        log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
-        mean_lg, var_lg = tf.nn.moments(log_lg, [2], keep_dims=True)
-        normalized_lg = tf.divide(tf.subtract(log_lg, mean_lg), tf.sqrt(var_lg+1e-7))
+        #log_md = tf.log(tf.divide(self.input, self.i_hat_md))
+        #mean_md, var_md = tf.nn.moments(log_md, [2], keep_dims=True)
+        #normalized_md = tf.divide(tf.subtract(log_md, mean_md), tf.sqrt(var_md+1e-7))
 
-        self.r_x = self.beta[0] * normalized_sh + self.beta[1] * normalized_md + self.beta[2] * normalized_lg
+        #log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
+        #mean_lg, var_lg = tf.nn.moments(log_lg, [2], keep_dims=True)
+        #normalized_lg = tf.divide(tf.subtract(log_lg, mean_lg), tf.sqrt(var_lg+1e-7))
+
+        #self.r_x = self.beta[0] * normalized_sh + self.beta[1] * normalized_md + self.beta[2] * normalized_lg
          
     def threshold(self, is_lrcn = False):
         if is_lrcn:
+            print("is lrcn!")
             # if we use lrcn then we cannot use the 4 frames provided as channels. we need to keep it at time index
             e_on = tf.reshape(tf.nn.relu(self.r_x - (1 + self.mu_on)), [-1, self.inp_size[3], self.inp_size[1], self.inp_size[2], 1])
             e_off = tf.reshape(tf.nn.relu(-(self.r_x - (1 - self.mu_off))),  [-1, self.inp_size[3], self.inp_size[1], self.inp_size[2], 1])    
@@ -129,7 +138,8 @@ class Retina():
             e_on = tf.reshape(tf.nn.relu(self.r_x - self.mu_on),[-1, self.inp_size[1], self.inp_size[2], self.inp_size[3],self.inp_size[4]])
             e_off = tf.reshape(tf.nn.relu(-(self.r_x + self.mu_off)), [-1, self.inp_size[1], self.inp_size[2], self.inp_size[3], self.inp_size[4]])
             print(e_on.get_shape(), e_off.get_shape())        
-            self.out = tf.concat([e_on, e_off], axis = 4)    
+            self.out = tf.concat([e_on, e_off], axis = 3)    
+ 
         # self.out = tf.stack([e_on, e_off], axis = 2)    
         # print(self.out.get_shape(),"here111")
         # except Exception:
@@ -143,6 +153,7 @@ class Retina():
     def get_output(self):
         return self.out
 
-
+    def get_diff_output(self):
+        return self.diff_out
 
 
