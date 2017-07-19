@@ -51,8 +51,8 @@ class Retina():
         self.beta = [self.beta_s, self.beta_m, self.beta_l]
         #self.mu_off = tf.Variable(1.0)
         #self.mu_on= tf.Variable(-1.0)
-        self.mu_off = 1.96
-        self.mu_on = 1.96
+        self.mu_off = 0.5
+        self.mu_on = 0.5
         # self.mu_on= 1.0
         # print(self.mu_on)
         # print(li)
