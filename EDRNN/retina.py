@@ -1,6 +1,5 @@
 import tensorflow as tf
 from rnn_cell import EMAcell
-from rnn_cell import Differencecell   
 
 class Retina():
     """docstring for Retina"""
