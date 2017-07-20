@@ -20,8 +20,9 @@ def brownian(vids, sigma=0.7):
 
 	for i in range(batchs):
 		for j in range(frames):
-			h = hs[i*batchs + j]
-			v = vs[i*batchs + j]
+			# print(i*frames + j)
+			h = hs[i*frames + j]
+			v = vs[i*frames + j]
 
 			if h <= 0:
 				vids[i][j] = np.lib.pad(vids[i][j], ((0,0),(0,-h),(0,0)), mode='constant')[:,-h:,:]
