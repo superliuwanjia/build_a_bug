@@ -69,6 +69,7 @@ def get_network_and_environment_creator(args, random_seed=3):
         nonlocal network_conf
         copied_network_conf = copy.copy(network_conf)
         copied_network_conf['name'] = name
+        
         copied_network_conf['event'] = args.event
         copied_network_conf['event_type'] = args.event_type
         copied_network_conf['per_channel'] = args.per_channel
@@ -76,6 +77,8 @@ def get_network_and_environment_creator(args, random_seed=3):
         copied_network_conf['norm'] = args.norm
         copied_network_conf['convnet'] = args.convnet
         copied_network_conf['is_noisy'] = args.is_noisy
+        copied_network_conf['spatial_pooling'] = args.spatial_pooling
+        copied_network_conf['seperate_stream'] = args.seperate_stream
         return network(copied_network_conf)
 
     return network_creator, env_creator
@@ -114,12 +117,14 @@ def get_arg_parser():
     parser.add_argument('-bn', '--batch_norm', default=True, type=bool_arg, help="batch_norm", dest="batch_norm")  
     parser.add_argument('-norm', '--additional_norm', default="", type=str, help="additional normaliation, non or ln and dn", dest="norm") 
     parser.add_argument('-in', '--is_noisy', default=False, type=bool_arg, help="add noise to the input", dest="is_noisy") 
+    parser.add_argument('-sp', '--spatial_pooling', default="none", type=str, help="spatial pooling, none, frame, event or both", dest="spatial_pooling") 
+    parser.add_argument('-ss', '--seperate_stream', default=False, type=bool_arg, help="seperate stream of convnet and lstm bewteen event and frame", dest="seperate_stream") 
+ 
     return parser
 
 
 if __name__ == '__main__':
     args = get_arg_parser().parse_args()
-
     import logger_utils
     logger_utils.save_args(args, args.debugging_folder)
     logging.debug(args)

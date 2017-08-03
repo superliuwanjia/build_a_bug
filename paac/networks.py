@@ -8,9 +8,13 @@ import os
 
 # from model_v2 import *
 
-sys.path.insert(0, '/home/rgoel/drmm/theano_implementation/drmm_tensorflow')
-sys.path.insert(0, '/mnt/group3/ucnn/robin/build_a_bug/EDRNN')
-sys.path.insert(0, '/home/rgoel/drmm/bug')
+#sys.path.insert(0, '/home/rgoel/drmm/theano_implementation/drmm_tensorflow')
+#sys.path.insert(0, '/mnt/group3/ucnn/robin/build_a_bug/EDRNN')
+#sys.path.insert(0, '/home/rgoel/drmm/bug')
+
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, "EDRNN"))
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, "bug"))
 # sys.path.insert(0, '/home/rgoel/drmm/bug')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from retina import *
@@ -447,9 +451,15 @@ class NIPSNetwork(Network):
 
                 print("cong event_type1", conf['event_type'])
                 channel = 1
+                event = None
+
+                inputs = []
+                channels = []
                 if conf["event"] == "off":
                     print("using jsut frames")
                     inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2],1])
+                    inputs += [inp]
+                    channels += [channel]
                 else:
                     if conf["event_type"] == "ema":
                         print("ema type1")
@@ -463,63 +473,92 @@ class NIPSNetwork(Network):
                         event = tf.reshape(event, [-1,inp_shape[1], inp_shape[2],1])
                         event_channel = 1
                     if conf["event"] == "both":
-                        inp = tf.concat([event, tf.reshape(tf.transpose(self.input, [0,3,1,2]), [-1, inp_shape[1], inp_shape[2],1])], axis=3)
-                        channel += event_channel
+                        inputs += [event, tf.reshape(tf.transpose(self.input,[0,3,1,2]), [-1,inp_shape[1], inp_shape[2],channel])]
+                        channels += [event_channel, channel]
+
                     elif conf["event"] == "on":
                         inp = event
                         channel = event_channel
+                        inputs += [inp]
+                        channels += [channel]
+           
+                # spatial pooling
+                print(conf)
+                if conf["spatial_pooling"] == "frame" or conf["spatial_pooling"] == "both":
+                    inputs += [tf.reshape(tf.transpose(tf.nn.avg_pool(self.input, [1, 4, 4, 1],[1,1,1,1],padding="SAME"),[0,3,1,2]),[-1, inp_shape[1], inp_shape[2],1])]
+                    print("frame pooling shape:", inputs[-1].get_shape())
+                    channels += [1]
+                if conf["spatial_pooling"] == "event" or conf["spatial_pooling"] == "both" and (not conf["event"] == "off"):
+                    inputs += [tf.nn.avg_pool(event, [1, 4, 4, 1],[1,1,1,1],padding="SAME")]
+                    print("event pooling shape:", inputs[-1].get_shape())
+            
+                    channels += [1]
 
-                self.output_retina = inp
+
+                self.output_retina = tf.concat(inputs, axis=3)
+                if not conf["seperate_stream"]:
+                    inputs = [tf.concat(inputs, axis=3)]
+                    channels = [np.sum(channels)]
                 print("retina output shape", inp.get_shape())
-                if conf["batch_norm"]:
-                    print("using BN")
-                    inp = batch_norm(inp)
 
-                if conf["norm"] == "ln":
-                    print("using LN")
-                    inp = tf.reshape(inp, [-1, channel])
-                    inp = layer_norm(inp)
-                    inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2], channel])
 
-                if conf["convnet"]:
-                    print("using a convnet")
-                    lenet = Lenet(inp, conv_filters = [[5, 5, channel, 6], [5, 5, 6, 16]])
-                    inp = lenet.output
-                    print("convent output shape",inp.get_shape())
-                
-                new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
-                self.lenet_output = inp
+                # seperate streams
+                lstm_outputs = [] 
+                for i, (inp, channel) in enumerate(zip(inputs, channels)):
+                    with tf.variable_scope("stream_" + str(i)):
+                        print("channel:")
+                        print(inp.get_shape(), channel)
+                        if conf["batch_norm"]:
+                            print("using BN")
+                            inp = batch_norm(inp)
 
-                # adding per channel lstm/ simple LSTM
-                if conf["per_channel"]:
-                    print("using per channel")
-                    channels = new_inp_sh[-1]
-                    inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
-                    inp_split = tf.split(inp, channels, axis = 3)
-                    outputs = []
-                    for channel in range(channels):
-                        with tf.variable_scope("channel_lstm"+str(channel)):
-                            lstm_inp = tf.reshape(inp_split[channel],[-1, inp_shape[-1], new_inp_sh[1]*new_inp_sh[2]])
-                            # print(lstm_inp.get_shape())
-                            lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2])
-                            if self.first_time == 0:
-                                out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, initial_state = self.h[channel])
-                            else:
-                                out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
-                                # print(state[0].get_shape(), out.get_shape())
+                        if conf["norm"] == "ln":
+                            print("using LN")
+                            inp = tf.reshape(inp, [-1, channel])
+                            inp = layer_norm(inp)
+                            inp = tf.reshape(inp, [-1, inp_shape[1], inp_shape[2], channel])
 
-                                # print(hi)
-                                self.h.append((state, out[:,-1,:]))
-                            outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
-                    outputs = tf.concat(outputs, axis = 3)
-                else:
-                    print("using full channel")
-                    lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
-                    lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
-                    out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
-                    outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
-                self.lstm_output = outputs
+                        if conf["convnet"]:
+                            print("using a convnet")
+                            lenet = Lenet(inp, conv_filters = [[5, 5, channel, 6], [5, 5, 6, 16]])
+                            inp = lenet.output
+                            print("convent output shape",inp.get_shape())
+                        
+                        new_inp_sh = inp.get_shape().as_list()  # shape after passing through lenet
+                        self.lenet_output = inp
+
+                        # adding per channel lstm/ simple LSTM
+                        if conf["per_channel"]:
+                            print("using per channel")
+                            channels = new_inp_sh[-1]
+                            inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2], new_inp_sh[3]])
+                            inp_split = tf.split(inp, channels, axis = 3)
+                            outputs = []
+                            for channel in range(channels):
+                                with tf.variable_scope("channel_lstm"+str(channel)):
+                                    lstm_inp = tf.reshape(inp_split[channel],[-1, inp_shape[-1], new_inp_sh[1]*new_inp_sh[2]])
+                                    # print(lstm_inp.get_shape())
+                                    lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2])
+                                    if self.first_time == 0:
+                                        out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, initial_state = self.h[channel])
+                                    else:
+                                        out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+                                        # print(state[0].get_shape(), out.get_shape())
+
+                                        # print(hi)
+                                        self.h.append((state, out[:,-1,:]))
+                                    outputs.append(tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], 1]))
+                            outputs = tf.concat(outputs, axis = 3)
+                        else:
+                            print("using full channel")
+                            lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
+                            lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
+                            out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+                            outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
+                        self.lstm_output = outputs
+                        lstm_outputs += [self.lstm_output]
+                    # print(hi)
+                outputs = tf.concat(lstm_outputs, axis=3)
                 print("output of lstm shape ",outputs.get_shape())
-                # print(hi)
                 _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
                 self.output = fc4
