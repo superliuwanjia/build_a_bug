@@ -67,6 +67,7 @@ class DeepQNetwork:
         linear_part = difference - quadratic_part
         errors = (0.5 * tf.square(quadratic_part)) + linear_part
         self.loss = tf.reduce_sum(errors)
+        tf.summary.scalar('Loss', self.loss)
         #self.loss = tf.reduce_mean(tf.square(self.y_a - self.y_))
 
         # (??) learning rate
@@ -78,6 +79,7 @@ class DeepQNetwork:
 
         self.saver = tf.train.Saver(max_to_keep=25)
 
+        self.merged = tf.summary.merge_all()
         # Initialize variables
         self.sess.run(tf.global_variables_initializer())
         self.sess.run(self.update_target) # is this necessary?
@@ -173,11 +175,12 @@ class DeepQNetwork:
             else:
                 y_[i] = batch[i].reward + gamma * np.max(y2[i])
 
-        self.train_step.run(feed_dict={
+        summary = self.train_step.run(self.merged, feed_dict={
             self.x: x,
             self.a: a,
             self.y_: y_
         }, session=self.sess)
+        self.summary_writer.add_summary(summary, stepNumber)
 
         if stepNumber % self.targetModelUpdateFrequency == 0:
 			self.sess.run(self.update_target)
