@@ -24,6 +24,7 @@ parser.add_argument("--observation-steps", type=int, default=50000, help="train 
 parser.add_argument("--learning-rate", type=float, default=0.00025, help="learning rate (step size for optimization algo)")
 parser.add_argument("--target-model-update-freq", type=int, default=10000, help="how often (in steps) to update the target model.  Note nature paper says this is in 'number of parameter updates' but their code says steps. see tinyurl.com/hokp4y8")
 parser.add_argument("--model", help="tensorflow model checkpoint file to initialize from")
+parser.add_argument("--preprocess", help="Apply preprocessing from the following: stack, ema, none", type=str, default="stack")
 parser.add_argument("rom", help="rom file to run")
 args = parser.parse_args()
 

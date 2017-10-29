@@ -3,6 +3,8 @@ import math
 import numpy as np
 import os
 import tensorflow as tf
+from retina import Retina
+from lenet import Lenet
 
 gamma = .99
 
@@ -32,6 +34,7 @@ class DeepQNetwork:
         self.saveModelFrequency = args.save_model_freq
         self.targetModelUpdateFrequency = args.target_model_update_freq
         self.normalizeWeights = args.normalize_weights
+        self.preprocess = args.preprocess
 
         self.staleSess = None
 
@@ -46,6 +49,14 @@ class DeepQNetwork:
         self.x_target, self.y_target = self.buildNetwork('target', False, numActions)
         assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
         assert (len(tf.global_variables()) == 20),"Expected 20 total variables"
+
+        if self.preprocess:
+            self.i_hat_s = tf.zeros_like(self.input)[:, :, :, 0]
+            self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84 * 84])
+            self.i_hat_m = tf.zeros_like(self.input)[:, :, :, 0]
+            self.i_hat_m = tf.reshape(self.i_hat_m, [-1, 84 * 84])
+            self.i_hat_l = tf.zeros_like(self.input)[:, :, :, 0]
+            self.i_hat_l = tf.reshape(self.i_hat_l, [-1, 84 * 84])
 
         # build the variable copy ops
         self.update_target = []
@@ -91,6 +102,48 @@ class DeepQNetwork:
             print('Loading from model file %s' % (args.model))
             self.saver.restore(self.sess, args.model)
 
+    def applyPreprocess(self, input_tensor, inp_shape):
+        inputs = []
+        channels = []
+        channel = 1
+
+        if self.preprocess == 'ema' or self.preprocess == 'stack':
+            retina = Retina(input_tensor,
+                            inp_shape,
+                            is_lrcn=True,
+                            i_hat_lg=self.i_hat_l,
+                            i_hat_md=self.i_hat_m,
+                            i_hat_sh=self.i_hat_s
+                            )
+
+            self.i_hat_s = retina.i_hat_sh[:, -1, :]
+            self.i_hat_m = retina.i_hat_md[:, -1, :]
+            self.i_hat_l = retina.i_hat_lg[:, -1, :]
+            self.sd = retina.i_s
+
+            event = retina.get_output()
+            event_channel = 2
+            inputs += event
+            channels += event_channel
+
+            if self.preprocess == 'stack':
+                inputs += [
+                    tf.reshape(
+                        tf.transpose(input_tensor, [0, 3, 1, 2]),
+                        [-1, inp_shape[1], inp_shape[2], channel])
+                ]
+                channels += [channel]
+
+            retina_out = tf.concat(inputs, axis=3, name='retina_output')
+            retina_channels = sum(channels)
+            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [5, 5, 6, 16]])
+            return lenet.output
+
+        elif self.process is None:
+            return input_tensor
+        else:
+            raise NotImplementedError('Preprocessing input not implemented')
+
     def buildNetwork(self, name, trainable, numActions):
         
         print("Building network for %s trainable=%s" % (name, trainable))
@@ -100,13 +153,22 @@ class DeepQNetwork:
         print(x)
 
         x_normalized = tf.to_float(x) / 255.0
-        print(x_normalized)
+        print(x_normalized) # input
+        inp_shape = x_normalized.get_shape().as_list()
+        print("Input shape to network {}".format(inp_shape))
+        # Apply EDR
+        inp = tf.reshape(
+            tf.transpose(x_normalized, [0, 3, 1, 2]),
+            [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
+        )
+        dqn_in = self.applyPreprocess(inp, inp_shape)
+        print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
 
         # Second layer convolves 32 8x8 filters with stride 4 with relu
         with tf.variable_scope("cnn1_" + name):
             W_conv1, b_conv1 = self.makeLayerVariables([8, 8, 4, 32], trainable, "conv1")
 
-            h_conv1 = tf.nn.relu(tf.nn.conv2d(x_normalized, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
+            h_conv1 = tf.nn.relu(tf.nn.conv2d(dqn_in, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
             print(h_conv1)
 
         # Third layer convolves 64 4x4 filters with stride 2 with relu
