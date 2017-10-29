@@ -237,12 +237,15 @@ class DeepQNetwork:
             else:
                 y_[i] = batch[i].reward + gamma * np.max(y2[i])
 
-        summary = self.train_step.run(self.merged, feed_dict={
+        self.train_step.run(feed_dict={
             self.x: x,
             self.a: a,
             self.y_: y_
         }, session=self.sess)
-        self.summary_writer.add_summary(summary, stepNumber)
+
+        sum_str = self.sess.run(self.merged)
+        self.summary_writer.add_summary(sum_str, stepNumber)
+        self.summary_writer.flush()
 
         if stepNumber % self.targetModelUpdateFrequency == 0:
 			self.sess.run(self.update_target)
