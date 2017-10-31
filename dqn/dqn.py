@@ -7,8 +7,11 @@ import sys
 import pdb
 sys.path.append('/home/raymond/Documents/Projects/build_a_bug/EDRNN')
 sys.path.append('/home/raymond/Documents/Projects/build_a_bug/bug')
+sys.path.append('/home/raymond/Documents/Projects/build_a_bug/paac')
+sys.path.append('/home/raymond/Documents/Projects/build_a_bug/')
 
 
+from networks import fc, flatten
 from retina import Retina
 from lenet import Lenet
 
@@ -145,12 +148,22 @@ class DeepQNetwork:
                 channels += [channel]
 
             retina_out = tf.concat(inputs, axis=3, name='retina_output')
-            retina_channels = sum(channels)
-            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [5, 5, 6, 16]])
-            return lenet.output
+            retina_channels = np.sum(channels)
+            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [5, 5, 6,16]])
+            inp = lenet.output
+            new_inp_sh = inp.get_shape().as_list()
+            print("Lenet Output Shape: {}".format(new_inp_sh))
 
+            lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
+            lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
+            out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+            outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
+            print("LSTM Out shape: {}".format(outputs.get_shape().as_list()))
+            _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
+            print("Fully connected Shape: {}".format(fc4.get_shape().as_list()))
+            return fc4
         elif self.process is None:
-            return input_tensor
+            return tf.reshape(input_tensor, [-1, inp_shape[1], inp_shape[2],1])
         else:
             raise NotImplementedError('Preprocessing input not implemented')
 
@@ -170,6 +183,7 @@ class DeepQNetwork:
             tf.transpose(self.x_normalized, [0, 3, 1, 2]),
             [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
         )
+        print("input preprocessing shape: {}".format(inp.get_shape().as_list()))
         dqn_in = self.applyPreprocess(inp, inp_shape)
         print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
 
