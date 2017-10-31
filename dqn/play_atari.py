@@ -10,6 +10,18 @@ import argparse
 import dqn
 from atari_environment import AtariEnvironment
 from state import State
+import tensorflow as tf
+import shutil
+import pdb
+
+
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--train-epoch-steps", type=int, default=250000, help="how many steps (=4 frames) to run during a training epoch (approx -- will finish current game)")
@@ -25,12 +37,17 @@ parser.add_argument("--learning-rate", type=float, default=0.00025, help="learni
 parser.add_argument("--target-model-update-freq", type=int, default=10000, help="how often (in steps) to update the target model.  Note nature paper says this is in 'number of parameter updates' but their code says steps. see tinyurl.com/hokp4y8")
 parser.add_argument("--model", help="tensorflow model checkpoint file to initialize from")
 parser.add_argument("--preprocess", help="Apply preprocessing from the following: stack, ema, none", type=str, default="stack")
+parser.add_argument("--testing", type=str2bool, default=False, help="Boolean toggling basic testing")
 parser.add_argument("rom", help="rom file to run")
 args = parser.parse_args()
 
 print 'Arguments: %s' % (args)
 
-baseOutputDir = 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S")
+baseOutputDir = 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S") if not args.testing else 'test'
+if os.path.exists(baseOutputDir) and baseOutputDir == 'test':
+    shutil.rmtree(baseOutputDir)
+elif os.path.exists(baseOutputDir):
+    raise ValueError("Output dir already created something went wrong")
 os.makedirs(baseOutputDir)
 
 State.setup(args)
@@ -48,13 +65,13 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
     epochTotalScore = 0
 
     while environment.getStepNumber() - stepStart < minEpochSteps:
-    
+
         startTime = lastLogTime = time.time()
         stateReward = 0
         state = None
-        
+
         while not environment.isGameOver():
-      
+
             # Choose next action
             if evalWithEpsilon is None:
                 epsilon = max(.1, 1.0 - 0.9 * environment.getStepNumber() / 1e6)
@@ -70,7 +87,7 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
             # Make the move
             oldState = state
             reward, state, isTerminal = environment.step(action)
-            
+
             # Record experience in replay memory and train
             if isTraining and oldState is not None:
                 clippedReward = min(1, max(-1, reward))
@@ -79,7 +96,7 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
                 if environment.getStepNumber() > args.observation_steps and environment.getEpisodeStepNumber() % 4 == 0:
                     batch = replayMemory.drawBatch(32)
                     dqn.train(batch, environment.getStepNumber())
-        
+
             if time.time() - lastLogTime > 60:
                 print('  ...frame %d' % environment.getEpisodeFrameNumber())
                 lastLogTime = time.time()
@@ -91,15 +108,26 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
         print('%s %d ended with score: %d (%d frames in %fs for %d fps)' %
             ('Episode' if isTraining else 'Eval', environment.getGameNumber(), environment.getGameScore(),
             environment.getEpisodeFrameNumber(), episodeTime, environment.getEpisodeFrameNumber() / episodeTime))
+
+        tf.summary.scalar('GameScore', environment.getGameScore())
+        sum_str = dqn.sess.run(dqn.merged)
+        dqn.summary_writer.add_summary(sum_str, environment.getGameNumber())
+        dqn.summary_writer.flush()
+
         epochTotalScore += environment.getGameScore()
         environment.resetGame()
-    
+
     # return the average score
     return epochTotalScore / (environment.getGameNumber() - startGameNumber)
 
 
 while True:
-    aveScore = runEpoch(args.train_epoch_steps) #train
-    print('Average training score: %d' % (aveScore))
-    aveScore = runEpoch(args.eval_epoch_steps, evalWithEpsilon=.05) #eval
-    print('Average eval score: %d' % (aveScore))
+    try:
+        aveScore = runEpoch(args.train_epoch_steps) #train
+        print('Average training score: %d' % (aveScore))
+        aveScore = runEpoch(args.eval_epoch_steps, evalWithEpsilon=.05) #eval
+        print('Average eval score: %d' % (aveScore))
+    except KeyboardInterrupt:
+        dqn.sess.close()
+        if args.testing:
+            shutil.rmtree(baseOutputDir)

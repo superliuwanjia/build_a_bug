@@ -1,6 +1,6 @@
 import tensorflow as tf
 from rnn_cell import EMAcell
-
+import pdb
 
 class Retina():
     """docstring for Retina"""
@@ -13,10 +13,10 @@ class Retina():
         # self.mu_off = mu_off
         # self.mu_on = mu_on
         try:
-            self.hidden_units = inp_size[2]*inp_size[3]*inp_size[4]    
+            self.hidden_units = inp_size[2]*inp_size[3]*inp_size[4]
         except Exception:
             self.hidden_units = inp_size[2]*inp_size[1]
-        
+
         # self.beta_sl = beta_sh
         # self.beta_sl = beta_med
         # self.beta_lg = beta_lg
@@ -31,7 +31,7 @@ class Retina():
             self.threshold(is_lrcn)
         else:
             self.threshold()
-        
+
 
 
     def create_vars(self,):
@@ -77,17 +77,17 @@ class Retina():
         else:
             state_sh = self.input[:,0,:]
         outputs_sh, state_sh = tf.nn.dynamic_rnn(ema_cell_sh, self.input, initial_state = state_sh)
-        self.i_hat_sh = outputs_sh  
+        self.i_hat_sh = outputs_sh
 
         ema_cell_md = EMAcell(self.hidden_units, self.alphas[1])
         if self.i_m is not None:
             state_md = self.i_m
         else:
             state_md = self.input[:,0,:]
-        
+
         outputs_md, state_md = tf.nn.dynamic_rnn(ema_cell_md, self.input, initial_state = state_md)
         self.i_hat_md = outputs_md
-        
+
 
         ema_cell_lg = EMAcell(self.hidden_units, self.alphas[2])
         if self.i_l is not None:
@@ -96,7 +96,7 @@ class Retina():
             state_lg = self.input[:,0,:]
         outputs_lg, state_lg = tf.nn.dynamic_rnn(ema_cell_lg, self.input, initial_state = state_lg)
         self.i_hat_lg = outputs_lg
-        
+
 
     def get_rel_changes(self):
         self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh)) + self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md))\
@@ -112,20 +112,20 @@ class Retina():
         # log_lg = tf.log(tf.divide(self.input, self.i_hat_lg))
         # log_norm_lg = log_lg - tf.reduce_mean(log_lg, 1, keep_dims=True)
         # self.r_x = self.beta[0]*log_norm_sh + self.beta[1]*log_norm_md + self.beta[2]*log_norm_lg
-         
+
     def threshold(self, is_lrcn = False):
         if is_lrcn:
             # if we use lrcn then we cannot use the 4 frames provided as channels. we need to keep it at time index
             e_on = tf.reshape(tf.nn.relu(self.r_x - (1 + self.mu_on)), [-1, self.inp_size[3], self.inp_size[1], self.inp_size[2], 1])
-            e_off = tf.reshape(tf.nn.relu(-(self.r_x - (1 - self.mu_off))),  [-1, self.inp_size[3], self.inp_size[1], self.inp_size[2], 1])    
+            e_off = tf.reshape(tf.nn.relu(-(self.r_x - (1 - self.mu_off))),  [-1, self.inp_size[3], self.inp_size[1], self.inp_size[2], 1])
             self.out = tf.reshape(tf.concat([e_on, e_off], axis = 4),[-1, self.inp_size[1], self.inp_size[2], 2])
         else:
             # if we are not using lrcn we can use the frames as channels.
             e_on = tf.reshape(tf.transpose(tf.nn.relu(self.r_x - (1 + self.mu_on)),[0, 2, 1]),[-1, self.inp_size[1], self.inp_size[2], self.inp_size[3]])
             e_off = tf.reshape(tf.transpose(tf.nn.relu(-(self.r_x - (1 - self.mu_off))),[0, 2, 1]), [-1, self.inp_size[1], self.inp_size[2], self.inp_size[3]])
-            print(e_on.get_shape(), e_off.get_shape())        
-            self.out = tf.concat([e_on, e_off], axis = 3)    
-        # self.out = tf.stack([e_on, e_off], axis = 2)    
+            print(e_on.get_shape(), e_off.get_shape())
+            self.out = tf.concat([e_on, e_off], axis = 3)
+        # self.out = tf.stack([e_on, e_off], axis = 2)
         # print(self.out.get_shape(),"here111")
         # except Exception:
         # print(s)
@@ -133,11 +133,7 @@ class Retina():
             # e_off = tf.reshape(tf.nn.relu(-(self.r_x - (1 - self.mu_off))), self.inp_size)
         #     self.out = tf.concat([e_on, e_off], axis = 4)
 
-        
+
 
     def get_output(self):
         return self.out
-
-
-
-
