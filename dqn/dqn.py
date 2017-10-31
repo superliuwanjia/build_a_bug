@@ -139,7 +139,7 @@ class DeepQNetwork:
             if self.preprocess == 'stack':
                 inputs += [
                     tf.reshape(
-                        tf.transpose(input_tensor, [0, 3, 1, 2]),
+                        tf.transpose(self.x_normalized, [0, 3, 1, 2]),
                         [-1, inp_shape[1], inp_shape[2], channel])
                 ]
                 channels += [channel]
