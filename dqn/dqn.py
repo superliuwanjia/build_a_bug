@@ -3,6 +3,17 @@ import math
 import numpy as np
 import os
 import tensorflow as tf
+import sys
+import pdb
+sys.path.append('/home/raymond/Documents/Projects/build_a_bug/EDRNN')
+sys.path.append('/home/raymond/Documents/Projects/build_a_bug/bug')
+sys.path.append('/home/raymond/Documents/Projects/build_a_bug/paac')
+sys.path.append('/home/raymond/Documents/Projects/build_a_bug/')
+
+
+from networks import fc, flatten
+from retina import Retina
+from lenet import Lenet
 
 gamma = .99
 
@@ -26,19 +37,32 @@ class GradientClippingOptimizer(tf.train.Optimizer):
 
 class DeepQNetwork:
     def __init__(self, numActions, baseDir, args):
-        
+
         self.numActions = numActions
         self.baseDir = baseDir
         self.saveModelFrequency = args.save_model_freq
         self.targetModelUpdateFrequency = args.target_model_update_freq
         self.normalizeWeights = args.normalize_weights
+        self.preprocess = args.preprocess
 
         self.staleSess = None
 
         tf.set_random_seed(123456)
-        
+
         self.sess = tf.Session()
-        
+
+        print self.preprocess
+        # pdb.set_trace()
+        self.input = tf.placeholder(tf.uint8, shape=[None, 84, 84, 4], name="screens")
+        self.x_normalized = tf.to_float(self.input) / 255.0
+
+        self.i_hat_s = tf.zeros_like(self.x_normalized)[:, :, :, 0]
+        self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84 * 84])
+        self.i_hat_m = tf.zeros_like(self.x_normalized)[:, :, :, 0]
+        self.i_hat_m = tf.reshape(self.i_hat_m, [-1, 84 * 84])
+        self.i_hat_l = tf.zeros_like(self.x_normalized)[:, :, :, 0]
+        self.i_hat_l = tf.reshape(self.i_hat_l, [-1, 84 * 84])
+
         assert (len(tf.global_variables()) == 0),"Expected zero variables"
         self.x, self.y = self.buildNetwork('policy', True, numActions)
         assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
@@ -91,22 +115,83 @@ class DeepQNetwork:
             print('Loading from model file %s' % (args.model))
             self.saver.restore(self.sess, args.model)
 
+    def applyPreprocess(self, input_tensor, inp_shape):
+        inputs = []
+        channels = []
+        channel = 1
+        # pdb.set_trace()
+        if self.preprocess == 'ema' or self.preprocess == 'stack':
+            retina = Retina(input_tensor,
+                            inp_shape,
+                            is_lrcn=True,
+                            i_hat_lg=self.i_hat_l,
+                            i_hat_md=self.i_hat_m,
+                            i_hat_sh=self.i_hat_s
+                            )
+
+            self.i_hat_s = retina.i_hat_sh[:, -1, :]
+            self.i_hat_m = retina.i_hat_md[:, -1, :]
+            self.i_hat_l = retina.i_hat_lg[:, -1, :]
+            self.sd = retina.i_s
+
+            event = retina.get_output()
+            event_channel = 2
+            inputs += [event]
+            channels += [event_channel]
+
+            if self.preprocess == 'stack':
+                inputs += [
+                    tf.reshape(
+                        tf.transpose(self.x_normalized, [0, 3, 1, 2]),
+                        [-1, inp_shape[1], inp_shape[2], channel])
+                ]
+                channels += [channel]
+
+            retina_out = tf.concat(inputs, axis=3, name='retina_output')
+            retina_channels = np.sum(channels)
+            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [5, 5, 6,16]])
+            inp = lenet.output
+            new_inp_sh = inp.get_shape().as_list()
+            print("Lenet Output Shape: {}".format(new_inp_sh))
+
+            lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
+            lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
+            out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+            outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
+            print("LSTM Out shape: {}".format(outputs.get_shape().as_list()))
+            _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
+            print("Fully connected Shape: {}".format(fc4.get_shape().as_list()))
+            return fc4
+        elif self.process is None:
+            return tf.reshape(input_tensor, [-1, inp_shape[1], inp_shape[2],1])
+        else:
+            raise NotImplementedError('Preprocessing input not implemented')
+
     def buildNetwork(self, name, trainable, numActions):
-        
+
         print("Building network for %s trainable=%s" % (name, trainable))
 
         # First layer takes a screen, and shrinks by 2x
-        x = tf.placeholder(tf.uint8, shape=[None, 84, 84, 4], name="screens")
-        print(x)
-
-        x_normalized = tf.to_float(x) / 255.0
-        print(x_normalized)
+        # pdb.set_trace()
+        print(self.input)
+        # print "HELLSLFJSLDF", self.input, self.i_hat_l
+        print(self.x_normalized) # input
+        inp_shape = self.x_normalized.get_shape().as_list()
+        print("Input shape to network {}".format(inp_shape))
+        # Apply EDR
+        inp = tf.reshape(
+            tf.transpose(self.x_normalized, [0, 3, 1, 2]),
+            [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
+        )
+        print("input preprocessing shape: {}".format(inp.get_shape().as_list()))
+        dqn_in = self.applyPreprocess(inp, inp_shape)
+        print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
 
         # Second layer convolves 32 8x8 filters with stride 4 with relu
         with tf.variable_scope("cnn1_" + name):
             W_conv1, b_conv1 = self.makeLayerVariables([8, 8, 4, 32], trainable, "conv1")
 
-            h_conv1 = tf.nn.relu(tf.nn.conv2d(x_normalized, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
+            h_conv1 = tf.nn.relu(tf.nn.conv2d(dqn_in, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
             print(h_conv1)
 
         # Third layer convolves 64 4x4 filters with stride 2 with relu
@@ -139,7 +224,7 @@ class DeepQNetwork:
 
             y = tf.matmul(h_fc1, W_fc2) + b_fc2
             print(y)
-            
+
         return x, y
 
     def makeLayerVariables(self, shape, trainable, name_suffix):
@@ -153,12 +238,12 @@ class DeepQNetwork:
             weights = tf.Variable(tf.truncated_normal(shape, stddev=0.01), trainable=trainable, name='W_' + name_suffix)
             biases  = tf.Variable(tf.fill([shape[-1]], 0.1), trainable=trainable, name='W_' + name_suffix)
         return weights, biases
-        
+
     def inference(self, screens):
         y = self.sess.run([self.y], {self.x: screens})
         q_values = np.squeeze(y)
         return np.argmax(q_values)
-        
+
     def train(self, batch, stepNumber):
 
         x2 = [b.state2.getScreens() for b in batch]
@@ -167,7 +252,7 @@ class DeepQNetwork:
         x = [b.state1.getScreens() for b in batch]
         a = np.zeros((len(batch), self.numActions))
         y_ = np.zeros(len(batch))
-        
+
         for i in range(0, len(batch)):
             a[i, batch[i].action] = 1
             if batch[i].terminal:
@@ -181,9 +266,9 @@ class DeepQNetwork:
             self.y_: y_
         }, session=self.sess)
 
-        sum_str = self.sess.run(self.merged)
-        self.summary_writer.add_summary(sum_str, stepNumber)
-        self.summary_writer.flush()
+        # sum_str = self.sess.run(self.merged)
+        # self.summary_writer.add_summary(sum_str, stepNumber)
+        # self.summary_writer.flush()
 
         if stepNumber % self.targetModelUpdateFrequency == 0:
 			self.sess.run(self.update_target)
