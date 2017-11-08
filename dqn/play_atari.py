@@ -38,6 +38,7 @@ parser.add_argument("--target-model-update-freq", type=int, default=10000, help=
 parser.add_argument("--model", help="tensorflow model checkpoint file to initialize from")
 parser.add_argument("--preprocess", help="Apply preprocessing from the following: stack, ema, none", type=str, default="stack")
 parser.add_argument("--testing", type=str2bool, default=False, help="Boolean toggling basic testing")
+parser.add_argument("--batch-size", type=int, default=32, help="batch size")
 parser.add_argument("rom", help="rom file to run")
 args = parser.parse_args()
 
@@ -46,6 +47,7 @@ print 'Arguments: %s' % (args)
 baseOutputDir = 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S") if not args.testing else 'test'
 if os.path.exists(baseOutputDir) and baseOutputDir == 'test':
     shutil.rmtree(baseOutputDir)
+    args.observation_steps = args.batch_size
 elif os.path.exists(baseOutputDir):
     raise ValueError("Output dir already created something went wrong")
 os.makedirs(baseOutputDir)
@@ -94,7 +96,7 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
                 replayMemory.addSample(replay.Sample(oldState, action, clippedReward, state, isTerminal))
 
                 if environment.getStepNumber() > args.observation_steps and environment.getEpisodeStepNumber() % 4 == 0:
-                    batch = replayMemory.drawBatch(32)
+                    batch = replayMemory.drawBatch(args.batch_size)
                     dqn.train(batch, environment.getStepNumber())
 
             if time.time() - lastLogTime > 60:

@@ -65,6 +65,7 @@ class DeepQNetwork:
 
         assert (len(tf.global_variables()) == 0),"Expected zero variables"
         self.x, self.y = self.buildNetwork('policy', True, numActions)
+        print('Trainable variables: {}\n Global Variables: {}'.format(tf.trainable_variables(), tf.global_variables()))
         assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
         assert (len(tf.global_variables()) == 10),"Expected 10 total variables"
         self.x_target, self.y_target = self.buildNetwork('target', False, numActions)
@@ -121,7 +122,13 @@ class DeepQNetwork:
         channel = 1
         # pdb.set_trace()
         if self.preprocess == 'ema' or self.preprocess == 'stack':
-            retina = Retina(input_tensor,
+            frames = tf.transpose(input_tensor, [0, 3, 1, 2])
+            inp = tf.reshape(
+                    frames,
+                    [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
+            )
+            print('inp to retina: {}'.format(inp.get_shape().as_list()))
+            retina = Retina(inp,
                             inp_shape,
                             is_lrcn=True,
                             i_hat_lg=self.i_hat_l,
@@ -134,57 +141,63 @@ class DeepQNetwork:
             self.i_hat_l = retina.i_hat_lg[:, -1, :]
             self.sd = retina.i_s
 
+            # None, 4, 84, 84 ,1
+            frames = tf.expand_dims(frames, -1)
+            # move frames into batch size
+            frame_shape = tf.shape(frames)
+            frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], frame_shape[4]])
+
             event = retina.get_output()
+            # event = tf.stack([event for _ in range(frame_shape[1])], axis=1)
+            print('Retina Output Shape {}'.format(event.get_shape().as_list()))
+
             event_channel = 2
             inputs += [event]
             channels += [event_channel]
 
             if self.preprocess == 'stack':
-                inputs += [
-                    tf.reshape(
-                        tf.transpose(self.x_normalized, [0, 3, 1, 2]),
-                        [-1, inp_shape[1], inp_shape[2], channel])
-                ]
+                inputs += [frames]
                 channels += [channel]
 
-            retina_out = tf.concat(inputs, axis=3, name='retina_output')
+            # None, 4, 84, 84, 3
+            retina_out = tf.concat(inputs, axis=-1, name='retina_output')
             retina_channels = np.sum(channels)
-            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [5, 5, 6,16]])
+            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [2, 2, 6, 16]])
             inp = lenet.output
-            new_inp_sh = inp.get_shape().as_list()
+            new_inp_sh = tf.shape(inp)
             print("Lenet Output Shape: {}".format(new_inp_sh))
-
-            lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
-            lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
-            out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
-            outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
-            print("LSTM Out shape: {}".format(outputs.get_shape().as_list()))
-            _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
-            print("Fully connected Shape: {}".format(fc4.get_shape().as_list()))
-            return fc4
+            inp = tf.reshape(inp, [new_inp_sh[0] / 4, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3], 4])
+            inp = tf.reshape(inp, [new_inp_sh[0] / 4, 84, 84, 4])
+            return inp
+            # lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
+            # lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
+            # out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
+            # outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
+            # print("LSTM Out shape: {}".format(outputs.get_shape().as_list()))
+            # _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
+            # print("Fully connected Shape: {}".format(fc4.get_shape().as_list()))
+            # return fc4
         elif self.process is None:
-            return tf.reshape(input_tensor, [-1, inp_shape[1], inp_shape[2],1])
+            # return tf.reshape(input_tensor, [-1, inp_shape[1], inp_shape[2],1])
+            return input_tensor
         else:
             raise NotImplementedError('Preprocessing input not implemented')
 
     def buildNetwork(self, name, trainable, numActions):
 
         print("Building network for %s trainable=%s" % (name, trainable))
-
         # First layer takes a screen, and shrinks by 2x
         # pdb.set_trace()
-        print(self.input)
-        # print "HELLSLFJSLDF", self.input, self.i_hat_l
         print(self.x_normalized) # input
         inp_shape = self.x_normalized.get_shape().as_list()
+        # None, 84, 84, 4
         print("Input shape to network {}".format(inp_shape))
         # Apply EDR
-        inp = tf.reshape(
-            tf.transpose(self.x_normalized, [0, 3, 1, 2]),
-            [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
-        )
-        print("input preprocessing shape: {}".format(inp.get_shape().as_list()))
-        dqn_in = self.applyPreprocess(inp, inp_shape)
+        # inp = tf.reshape(
+        #     tf.transpose(self.x_normalized, [0, 3, 1, 2]),
+        #     [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
+        # )
+        dqn_in = self.applyPreprocess(self.x_normalized, inp_shape)
         print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
 
         # Second layer convolves 32 8x8 filters with stride 4 with relu
@@ -225,7 +238,7 @@ class DeepQNetwork:
             y = tf.matmul(h_fc1, W_fc2) + b_fc2
             print(y)
 
-        return x, y
+        return self.input, y
 
     def makeLayerVariables(self, shape, trainable, name_suffix):
         if self.normalizeWeights:
