@@ -5,11 +5,6 @@ import os
 import tensorflow as tf
 import sys
 import pdb
-sys.path.append('/home/raymond/Documents/Projects/build_a_bug/EDRNN')
-sys.path.append('/home/raymond/Documents/Projects/build_a_bug/bug')
-sys.path.append('/home/raymond/Documents/Projects/build_a_bug/paac')
-sys.path.append('/home/raymond/Documents/Projects/build_a_bug/')
-
 
 from networks import fc, flatten
 from retina import Retina
@@ -37,7 +32,7 @@ class GradientClippingOptimizer(tf.train.Optimizer):
 
 class DeepQNetwork:
     def __init__(self, numActions, baseDir, args):
-
+        self.args = args
         self.numActions = numActions
         self.baseDir = baseDir
         self.saveModelFrequency = args.save_model_freq
@@ -50,34 +45,50 @@ class DeepQNetwork:
         tf.set_random_seed(123456)
 
         self.sess = tf.Session()
-
-        print self.preprocess
-        # pdb.set_trace()
         self.input = tf.placeholder(tf.uint8, shape=[None, 84, 84, 4], name="screens")
         self.x_normalized = tf.to_float(self.input) / 255.0
-
+        print self.preprocess
+        # pdb.set_trace()
         self.i_hat_s = tf.zeros_like(self.x_normalized)[:, :, :, 0]
         self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84 * 84])
         self.i_hat_m = tf.zeros_like(self.x_normalized)[:, :, :, 0]
         self.i_hat_m = tf.reshape(self.i_hat_m, [-1, 84 * 84])
         self.i_hat_l = tf.zeros_like(self.x_normalized)[:, :, :, 0]
         self.i_hat_l = tf.reshape(self.i_hat_l, [-1, 84 * 84])
+        self.first_time = True
 
         assert (len(tf.global_variables()) == 0),"Expected zero variables"
         self.x, self.y = self.buildNetwork('policy', True, numActions)
-        print('Trainable variables: {}\n Global Variables: {}'.format(tf.trainable_variables(), tf.global_variables()))
-        assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
-        assert (len(tf.global_variables()) == 10),"Expected 10 total variables"
+        self.first_time = False
+        if not self.preprocess:
+            assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
+            assert (len(tf.global_variables()) == 10),"Expected 10 total variables"
+
         self.x_target, self.y_target = self.buildNetwork('target', False, numActions)
-        assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
-        assert (len(tf.global_variables()) == 20),"Expected 20 total variables"
+
+        if not self.preprocess:
+            assert (len(tf.trainable_variables()) == 10),"Expected 10 trainable_variables"
+            assert (len(tf.global_variables()) == 20),"Expected 20 total variables"
 
         # build the variable copy ops
         self.update_target = []
         trainable_variables = tf.trainable_variables()
         all_variables = tf.global_variables()
-        for i in range(0, len(trainable_variables)):
-			self.update_target.append(all_variables[len(trainable_variables) + i].assign(trainable_variables[i]))
+
+        if args.testing:
+            for t in all_variables:
+                print(t, t.get_shape().as_list())
+            print('length of all variables (global): {}'.format(len(all_variables)))
+            print
+            for t in trainable_variables:
+                print(t, t.get_shape().as_list())
+            print('length of trainable: {}'.format(len(trainable_variables)))
+            print
+
+        start = 4 if self.preprocess == 'stack' or self.preprocess == 'ema' else 0
+        for i in range(start, len(trainable_variables)):
+            if args.testing: print('global: {}, assigned from trainabled {}'.format(all_variables[len(trainable_variables) + i - start], trainable_variables[i]))
+            self.update_target.append(all_variables[len(trainable_variables) + i - start].assign(trainable_variables[i]))
 
         self.a = tf.placeholder(tf.float32, shape=[None, numActions])
         print('a %s' % (self.a.get_shape()))
@@ -127,14 +138,18 @@ class DeepQNetwork:
                     frames,
                     [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
             )
-            print('inp to retina: {}'.format(inp.get_shape().as_list()))
-            retina = Retina(inp,
-                            inp_shape,
-                            is_lrcn=True,
-                            i_hat_lg=self.i_hat_l,
-                            i_hat_md=self.i_hat_m,
-                            i_hat_sh=self.i_hat_s
-                            )
+
+            if self.args.testing: print('inp to retina: {}\n from frames {}'.format(inp.get_shape().as_list(), frames.get_shape().as_list()))
+            if self.first_time:
+                retina = Retina(inp,
+                                inp_shape,
+                                is_lrcn=True,
+                                i_hat_lg=self.i_hat_l,
+                                i_hat_md=self.i_hat_m,
+                                i_hat_sh=self.i_hat_s
+                                )
+            else:
+                retina = Retina(inp, inp_shape, is_lrcn=True)
 
             self.i_hat_s = retina.i_hat_sh[:, -1, :]
             self.i_hat_m = retina.i_hat_md[:, -1, :]
@@ -145,11 +160,12 @@ class DeepQNetwork:
             frames = tf.expand_dims(frames, -1)
             # move frames into batch size
             frame_shape = tf.shape(frames)
+
             frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], frame_shape[4]])
 
             event = retina.get_output()
             # event = tf.stack([event for _ in range(frame_shape[1])], axis=1)
-            print('Retina Output Shape {}'.format(event.get_shape().as_list()))
+            if self.args.testing: print('Retina Output Shape {}'.format(event.get_shape().as_list()))
 
             event_channel = 2
             inputs += [event]
@@ -162,13 +178,21 @@ class DeepQNetwork:
             # None, 4, 84, 84, 3
             retina_out = tf.concat(inputs, axis=-1, name='retina_output')
             retina_channels = np.sum(channels)
-            lenet = Lenet(retina_out, conv_filters=[[5, 5, retina_channels, 6], [2, 2, 6, 16]])
+            lenet = Lenet(retina_out,
+                          conv_filters=[[5, 5, retina_channels, 6], [2, 2, 6, 16]],
+                          trainable=self.trainable,
+                          first=self.first_time)
             inp = lenet.output
-            new_inp_sh = tf.shape(inp)
-            print("Lenet Output Shape: {}".format(new_inp_sh))
-            inp = tf.reshape(inp, [new_inp_sh[0] / 4, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3], 4])
-            inp = tf.reshape(inp, [new_inp_sh[0] / 4, 84, 84, 4])
-            return inp
+            # new_inp_sh = tf.shape(inp)
+            new_inp_sh = inp.get_shape().as_list()
+            if self.args.testing: print("Lenet Output Shape: {}".format(inp.get_shape().as_list()))
+            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3], 4])
+            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, 84, 84, 4])
+            inp = tf.reshape(inp, [-1, new_inp_sh[1] * 4, new_inp_sh[2] * 4, 1])
+            splits = tf.split(inp, 4)
+            preproc_out = tf.concat(splits, -1)
+            if self.args.testing: print(preproc_out.get_shape().as_list())
+            return preproc_out
             # lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
             # lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
             # out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
@@ -184,21 +208,16 @@ class DeepQNetwork:
             raise NotImplementedError('Preprocessing input not implemented')
 
     def buildNetwork(self, name, trainable, numActions):
-
+        self.trainable = trainable
         print("Building network for %s trainable=%s" % (name, trainable))
-        # First layer takes a screen, and shrinks by 2x
-        # pdb.set_trace()
-        print(self.x_normalized) # input
-        inp_shape = self.x_normalized.get_shape().as_list()
+        x = self.input
+        x_norm = self.x_normalized
+        inp_shape = x_norm.get_shape().as_list()
         # None, 84, 84, 4
         print("Input shape to network {}".format(inp_shape))
         # Apply EDR
-        # inp = tf.reshape(
-        #     tf.transpose(self.x_normalized, [0, 3, 1, 2]),
-        #     [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
-        # )
-        dqn_in = self.applyPreprocess(self.x_normalized, inp_shape)
-        print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
+        dqn_in = self.applyPreprocess(x_norm, inp_shape)
+        if self.args.testing: print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
 
         # Second layer convolves 32 8x8 filters with stride 4 with relu
         with tf.variable_scope("cnn1_" + name):
@@ -238,7 +257,7 @@ class DeepQNetwork:
             y = tf.matmul(h_fc1, W_fc2) + b_fc2
             print(y)
 
-        return self.input, y
+        return x, y
 
     def makeLayerVariables(self, shape, trainable, name_suffix):
         if self.normalizeWeights:
@@ -273,15 +292,19 @@ class DeepQNetwork:
             else:
                 y_[i] = batch[i].reward + gamma * np.max(y2[i])
 
-        self.train_step.run(feed_dict={
+        _, sum_str = self.sess.run([self.train_step, self.merged], feed_dict={
             self.x: x,
             self.a: a,
             self.y_: y_
-        }, session=self.sess)
-
+        })
+        # self.train_step.run(feed_dict={
+        #     self.x: x,
+        #     self.a: a,
+        #     self.y_: y_
+        # }, session=self.sess)
         # sum_str = self.sess.run(self.merged)
-        # self.summary_writer.add_summary(sum_str, stepNumber)
-        # self.summary_writer.flush()
+        self.summary_writer.add_summary(sum_str, stepNumber)
+        self.summary_writer.flush()
 
         if stepNumber % self.targetModelUpdateFrequency == 0:
 			self.sess.run(self.update_target)

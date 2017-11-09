@@ -42,8 +42,6 @@ parser.add_argument("--batch-size", type=int, default=32, help="batch size")
 parser.add_argument("rom", help="rom file to run")
 args = parser.parse_args()
 
-print 'Arguments: %s' % (args)
-
 baseOutputDir = 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S") if not args.testing else 'test'
 if os.path.exists(baseOutputDir) and baseOutputDir == 'test':
     shutil.rmtree(baseOutputDir)
@@ -51,6 +49,12 @@ if os.path.exists(baseOutputDir) and baseOutputDir == 'test':
 elif os.path.exists(baseOutputDir):
     raise ValueError("Output dir already created something went wrong")
 os.makedirs(baseOutputDir)
+
+print 'Arguments: %s' % (args)
+
+train_log = os.path.join(baseOutputDir, 'train.txt')
+train_file = open(train_log, "w")
+accum_frames = 0
 
 State.setup(args)
 
@@ -61,6 +65,7 @@ dqn = dqn.DeepQNetwork(environment.getNumActions(), baseOutputDir, args)
 replayMemory = replay.ReplayMemory(args)
 
 def runEpoch(minEpochSteps, evalWithEpsilon=None):
+    global accum_frames
     stepStart = environment.getStepNumber()
     isTraining = True if evalWithEpsilon is None else False
     startGameNumber = environment.getGameNumber()
@@ -111,10 +116,21 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
             ('Episode' if isTraining else 'Eval', environment.getGameNumber(), environment.getGameScore(),
             environment.getEpisodeFrameNumber(), episodeTime, environment.getEpisodeFrameNumber() / episodeTime))
 
-        tf.summary.scalar('GameScore', environment.getGameScore())
-        sum_str = dqn.sess.run(dqn.merged)
-        dqn.summary_writer.add_summary(sum_str, environment.getGameNumber())
-        dqn.summary_writer.flush()
+
+        accum_frames += environment.getEpisodeFrameNumber()
+        log_str = "type:{} gameNum:{} score:{} framesInGame:{} accumFrames:{}".format('Episode' if isTraining else 'Eval',
+                                                                             environment.getGameNumber(),
+                                                                             environment.getGameScore(),
+                                                                             environment.getEpisodeFrameNumber(),
+                                                                             accum_frames
+                                                                                      )
+        # print(log_str)
+        train_file.write(log_str + '\n')
+
+        # tf.summary.scalar('GameScore', environment.getGameScore())
+        # sum_str = dqn.sess.run(dqn.merged)
+        # dqn.summary_writer.add_summary(sum_str, environment.getGameNumber())
+        # dqn.summary_writer.flush()
 
         epochTotalScore += environment.getGameScore()
         environment.resetGame()
@@ -131,5 +147,6 @@ while True:
         print('Average eval score: %d' % (aveScore))
     except KeyboardInterrupt:
         dqn.sess.close()
+        train_file.close()
         if args.testing:
             shutil.rmtree(baseOutputDir)
