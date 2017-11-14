@@ -37,15 +37,18 @@ parser.add_argument("--learning-rate", type=float, default=0.00025, help="learni
 parser.add_argument("--target-model-update-freq", type=int, default=10000, help="how often (in steps) to update the target model.  Note nature paper says this is in 'number of parameter updates' but their code says steps. see tinyurl.com/hokp4y8")
 parser.add_argument("--model", help="tensorflow model checkpoint file to initialize from")
 parser.add_argument("--preprocess", help="Apply preprocessing from the following: stack, ema, none", type=str, default="stack")
+parser.add_argument("--conv-preprocess", type=str2bool, default=False, help="Boolean toggling using a convolutional net")
 parser.add_argument("--testing", type=str2bool, default=False, help="Boolean toggling basic testing")
 parser.add_argument("--batch-size", type=int, default=32, help="batch size")
+parser.add_argument("--save-imgs", type=str2bool, default=True, help="Boolean toggling saving of images")
 parser.add_argument("rom", help="rom file to run")
 args = parser.parse_args()
 
 baseOutputDir = 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S") if not args.testing else 'test'
 if os.path.exists(baseOutputDir) and baseOutputDir == 'test':
     shutil.rmtree(baseOutputDir)
-    args.observation_steps = args.batch_size
+    # args.observation_steps = args.batch_size
+    # args.targetModelUpdateFrequency = 1000
 elif os.path.exists(baseOutputDir):
     raise ValueError("Output dir already created something went wrong")
 os.makedirs(baseOutputDir)
@@ -63,9 +66,10 @@ environment = AtariEnvironment(args, baseOutputDir)
 dqn = dqn.DeepQNetwork(environment.getNumActions(), baseOutputDir, args)
 
 replayMemory = replay.ReplayMemory(args)
+first = True
 
 def runEpoch(minEpochSteps, evalWithEpsilon=None):
-    global accum_frames
+    global accum_frames, first
     stepStart = environment.getStepNumber()
     isTraining = True if evalWithEpsilon is None else False
     startGameNumber = environment.getGameNumber()
@@ -99,8 +103,10 @@ def runEpoch(minEpochSteps, evalWithEpsilon=None):
             if isTraining and oldState is not None:
                 clippedReward = min(1, max(-1, reward))
                 replayMemory.addSample(replay.Sample(oldState, action, clippedReward, state, isTerminal))
-
                 if environment.getStepNumber() > args.observation_steps and environment.getEpisodeStepNumber() % 4 == 0:
+                    if first:
+                        print "STARTED TRAINING"
+                        first = False
                     batch = replayMemory.drawBatch(args.batch_size)
                     dqn.train(batch, environment.getStepNumber())
 
@@ -145,7 +151,8 @@ while True:
         print('Average training score: %d' % (aveScore))
         aveScore = runEpoch(args.eval_epoch_steps, evalWithEpsilon=.05) #eval
         print('Average eval score: %d' % (aveScore))
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt) as e:
+        print(e)
         dqn.sess.close()
         train_file.close()
         if args.testing:

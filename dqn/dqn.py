@@ -10,6 +10,8 @@ from networks import fc, flatten
 from retina import Retina
 from lenet import Lenet
 
+import scipy.misc
+
 gamma = .99
 
 class GradientClippingOptimizer(tf.train.Optimizer):
@@ -85,7 +87,8 @@ class DeepQNetwork:
             print('length of trainable: {}'.format(len(trainable_variables)))
             print
 
-        start = 4 if self.preprocess == 'stack' or self.preprocess == 'ema' else 0
+        start = 4 if self.args.conv_preprocess else 0
+
         for i in range(start, len(trainable_variables)):
             if args.testing: print('global: {}, assigned from trainabled {}'.format(all_variables[len(trainable_variables) + i - start], trainable_variables[i]))
             self.update_target.append(all_variables[len(trainable_variables) + i - start].assign(trainable_variables[i]))
@@ -133,14 +136,18 @@ class DeepQNetwork:
         channel = 1
         # pdb.set_trace()
         if self.preprocess == 'ema' or self.preprocess == 'stack':
+            orig_frames = input_tensor
             frames = tf.transpose(input_tensor, [0, 3, 1, 2])
             inp = tf.reshape(
                     frames,
                     [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
             )
 
-            if self.args.testing: print('inp to retina: {}\n from frames {}'.format(inp.get_shape().as_list(), frames.get_shape().as_list()))
-            if self.first_time:
+            if self.args.testing:
+                print('inp to retina: {}\n from frames {}'.format(inp.get_shape().as_list(), frames.get_shape().as_list()))
+
+            # if not self.first_time:
+            if False:
                 retina = Retina(inp,
                                 inp_shape,
                                 is_lrcn=True,
@@ -160,11 +167,11 @@ class DeepQNetwork:
             frames = tf.expand_dims(frames, -1)
             # move frames into batch size
             frame_shape = tf.shape(frames)
-
-            frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], frame_shape[4]])
-
+            # frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], frame_shape[4]])
+            frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], 1])
+            if self.args.testing: print('Frame Output Shape {}'.format(frames.get_shape().as_list()))
             event = retina.get_output()
-            # event = tf.stack([event for _ in range(frame_shape[1])], axis=1)
+
             if self.args.testing: print('Retina Output Shape {}'.format(event.get_shape().as_list()))
 
             event_channel = 2
@@ -173,25 +180,51 @@ class DeepQNetwork:
 
             if self.preprocess == 'stack':
                 inputs += [frames]
+                # inputs += [orig_frames]
                 channels += [channel]
 
-            # None, 4, 84, 84, 3
+            # None, 84, 84, 3
             retina_out = tf.concat(inputs, axis=-1, name='retina_output')
             retina_channels = np.sum(channels)
-            lenet = Lenet(retina_out,
-                          conv_filters=[[5, 5, retina_channels, 6], [2, 2, 6, 16]],
-                          trainable=self.trainable,
-                          first=self.first_time)
-            inp = lenet.output
-            # new_inp_sh = tf.shape(inp)
-            new_inp_sh = inp.get_shape().as_list()
-            if self.args.testing: print("Lenet Output Shape: {}".format(inp.get_shape().as_list()))
-            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3], 4])
-            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, 84, 84, 4])
-            inp = tf.reshape(inp, [-1, new_inp_sh[1] * 4, new_inp_sh[2] * 4, 1])
+
+            if self.first_time:
+                self.retina = event
+                self.retina_out = retina_out
+
+            if self.args.conv_preprocess:
+                lenet = Lenet(retina_out,
+                              conv_filters=[[5, 5, retina_channels, 6], [2, 2, 6, 1]],
+                              trainable=self.trainable,
+                              first=self.first_time,
+                              pool_pads=['SAME', 'SAME'],
+                              pool_ksizes=[[1, 2, 2, 1], [1, 2, 2, 1]],
+                              pool_strides=[[1, 1, 1, 1], [1, 1, 1, 1]],
+                              )
+                inp = lenet.output
+                debug_str = "Lenet Output Shape: {}"
+                new_inp_sh = inp.get_shape().as_list()
+                # inp = tf.reshape(inp, [-1, new_inp_sh[1] * 4, new_inp_sh[2] * 4, 1])
+
+            else:
+                inp = retina_out
+                debug_str = "Output No ConvNet: {}"
+
+                # preproc_out = inp
+                new_inp_sh = inp.get_shape().as_list()
+
             splits = tf.split(inp, 4)
             preproc_out = tf.concat(splits, -1)
+            if self.args.testing: print(debug_str.format(new_inp_sh))
+
+            # new_inp_sh = tf.shape(inp)
+
+            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3], 4])
+            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, 84, 84, 4])
+
+
             if self.args.testing: print(preproc_out.get_shape().as_list())
+            if self.first_time:
+                self.preproc_out = preproc_out
             return preproc_out
             # lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
             # lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
@@ -214,14 +247,16 @@ class DeepQNetwork:
         x_norm = self.x_normalized
         inp_shape = x_norm.get_shape().as_list()
         # None, 84, 84, 4
-        print("Input shape to network {}".format(inp_shape))
+        print("Input shape to preproc {}".format(inp_shape))
         # Apply EDR
         dqn_in = self.applyPreprocess(x_norm, inp_shape)
-        if self.args.testing: print("After preprocessing input shape {}".format(dqn_in.get_shape().as_list()))
+        dqn_in_shape = dqn_in.get_shape().as_list()
+        self.feat_size = dqn_in_shape[-1]
+        if self.args.testing: print("After preprocessing input shape {}".format(dqn_in_shape))
 
         # Second layer convolves 32 8x8 filters with stride 4 with relu
         with tf.variable_scope("cnn1_" + name):
-            W_conv1, b_conv1 = self.makeLayerVariables([8, 8, 4, 32], trainable, "conv1")
+            W_conv1, b_conv1 = self.makeLayerVariables([8, 8, self.feat_size, 32], trainable, "conv1")
 
             h_conv1 = tf.nn.relu(tf.nn.conv2d(dqn_in, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
             print(h_conv1)
@@ -292,24 +327,36 @@ class DeepQNetwork:
             else:
                 y_[i] = batch[i].reward + gamma * np.max(y2[i])
 
-        _, sum_str = self.sess.run([self.train_step, self.merged], feed_dict={
+        _, sum_str, norm_frames, retina, preproc = self.sess.run([self.train_step, self.merged, self.x_normalized, self.retina, self.preproc_out], feed_dict={
             self.x: x,
             self.a: a,
             self.y_: y_
         })
-        # self.train_step.run(feed_dict={
-        #     self.x: x,
-        #     self.a: a,
-        #     self.y_: y_
-        # }, session=self.sess)
-        # sum_str = self.sess.run(self.merged)
+
+        assert np.amin(norm_frames) >= 0 and np.amax(norm_frames) <= 1.0, 'Normalized input out of bounds'
+
+        if self.args.save_imgs and stepNumber % 5000 == 0:
+            print('Saving debug images to debugImages')
+            dir_save_main = self.baseDir + '/debugImages'
+            if not os.path.isdir(dir_save_main):
+                os.makedirs(dir_save_main)
+
+            dir_save = dir_save_main + '/{}/'.format(stepNumber)
+            if not os.path.isdir(dir_save):
+                os.makedirs(dir_save)
+            scipy.misc.imsave(dir_save + 'normFrame{}.png'.format(stepNumber), norm_frames[0, :, :, 0])
+            scipy.misc.imsave(dir_save + 'retinaFramesOn{}.png'.format(stepNumber), retina[0, :, :, 0])
+            scipy.misc.imsave(dir_save + 'retinaFramesOff{}.png'.format(stepNumber), retina[0, :, :, 1])
+            for i in range(self.feat_size):
+                scipy.misc.imsave(dir_save + 'preprocOut{}_{}.png'.format(stepNumber, i), preproc[0, :, :, i])
+
         self.summary_writer.add_summary(sum_str, stepNumber)
         self.summary_writer.flush()
 
         if stepNumber % self.targetModelUpdateFrequency == 0:
 			self.sess.run(self.update_target)
 
-        if stepNumber % self.targetModelUpdateFrequency == 0 or stepNumber % self.saveModelFrequency == 0:
+        if stepNumber % self.saveModelFrequency == 0:
             dir = self.baseDir + '/models'
             if not os.path.isdir(dir):
                 os.makedirs(dir)

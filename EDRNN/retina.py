@@ -53,6 +53,9 @@ class Retina():
         # self.mu_on= tf.Variable(1.0)
         self.mu_off = 1.0
         self.mu_on= -1.0
+
+
+
         # self.mu_on= 1.0
         # print(self.mu_on)
         # print(li)
@@ -67,7 +70,7 @@ class Retina():
             # tf.summary.scalar("betas", self.beta_s)
             # tf.summary.scalar("mu_off", self.mu_off)
             # tf.summary.scalar("mu_on", self.mu_on)
-        print("here")
+        print("Finished creating all variables in Retina")
 
     def get_ema(self):
 
@@ -99,8 +102,9 @@ class Retina():
 
 
     def get_rel_changes(self):
-        self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh)) + self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md))\
- -                    + self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg))
+        self.r_x = self.beta[0]*tf.log(tf.divide(self.input, self.i_hat_sh)) + \
+                   self.beta[1]*tf.log(tf.divide(self.input, self.i_hat_md)) + \
+                   self.beta[2]*tf.log(tf.divide(self.input, self.i_hat_lg))
 
         # Code for normalization
         # log_sh = tf.log(tf.divide(self.input, self.i_hat_sh))

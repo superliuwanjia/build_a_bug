@@ -15,6 +15,7 @@ class Lenet():
                  trainable=True,
                  first=True):
         max_pool = inp
+        self.name = "lenet"
         with tf.variable_scope("lenet", reuse=not first):
             for layer_num in range(num_layers):
                 filter_var = tf.get_variable("filters" + str(layer_num),
