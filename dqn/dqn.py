@@ -3,6 +3,7 @@ import math
 import numpy as np
 import os
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 import sys
 import pdb
 
@@ -47,15 +48,16 @@ class DeepQNetwork:
         tf.set_random_seed(123456)
 
         self.sess = tf.Session()
+        # self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
+
         self.input = tf.placeholder(tf.uint8, shape=[None, 84, 84, 4], name="screens")
-        self.x_normalized = tf.to_float(self.input) / 255.0
         print self.preprocess
         # pdb.set_trace()
-        self.i_hat_s = tf.zeros_like(self.x_normalized)[:, :, :, 0]
+        self.i_hat_s = tf.zeros_like(self.input, dtype=tf.float32)[:, :, :, 0]
         self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84 * 84])
-        self.i_hat_m = tf.zeros_like(self.x_normalized)[:, :, :, 0]
+        self.i_hat_m = tf.zeros_like(self.input, dtype=tf.float32)[:, :, :, 0]
         self.i_hat_m = tf.reshape(self.i_hat_m, [-1, 84 * 84])
-        self.i_hat_l = tf.zeros_like(self.x_normalized)[:, :, :, 0]
+        self.i_hat_l = tf.zeros_like(self.input, dtype=tf.float32)[:, :, :, 0]
         self.i_hat_l = tf.reshape(self.i_hat_l, [-1, 84 * 84])
         self.first_time = True
 
@@ -136,18 +138,19 @@ class DeepQNetwork:
         channel = 1
         # pdb.set_trace()
         if self.preprocess == 'ema' or self.preprocess == 'stack':
-            orig_frames = input_tensor
-            frames = tf.transpose(input_tensor, [0, 3, 1, 2])
+            orig_frames = tf.to_float(input_tensor)
+            frames = tf.transpose(orig_frames, [0, 3, 1, 2])
             inp = tf.reshape(
                     frames,
                     [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
             )
+            # None, 4, 7056
 
             if self.args.testing:
                 print('inp to retina: {}\n from frames {}'.format(inp.get_shape().as_list(), frames.get_shape().as_list()))
 
-            # if not self.first_time:
-            if False:
+            if not self.first_time:
+            # if False:
                 retina = Retina(inp,
                                 inp_shape,
                                 is_lrcn=True,
@@ -155,8 +158,11 @@ class DeepQNetwork:
                                 i_hat_md=self.i_hat_m,
                                 i_hat_sh=self.i_hat_s
                                 )
+
+
             else:
                 retina = Retina(inp, inp_shape, is_lrcn=True)
+                self.retina_layer = retina
 
             self.i_hat_s = retina.i_hat_sh[:, -1, :]
             self.i_hat_m = retina.i_hat_md[:, -1, :]
@@ -164,12 +170,13 @@ class DeepQNetwork:
             self.sd = retina.i_s
 
             # None, 4, 84, 84 ,1
-            frames = tf.expand_dims(frames, -1)
-            # move frames into batch size
-            frame_shape = tf.shape(frames)
-            # frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], frame_shape[4]])
-            frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], 1])
-            if self.args.testing: print('Frame Output Shape {}'.format(frames.get_shape().as_list()))
+            # frames = tf.expand_dims(frames, -1)
+            # # move frames into batch size
+            # frame_shape = tf.shape(frames)
+            # # None*4, 84, 84, 1
+            # frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], 1])
+            # if self.args.testing: print('Frame Output Shape {}'.format(frames.get_shape().as_list()))
+
             event = retina.get_output()
 
             if self.args.testing: print('Retina Output Shape {}'.format(event.get_shape().as_list()))
@@ -179,17 +186,16 @@ class DeepQNetwork:
             channels += [event_channel]
 
             if self.preprocess == 'stack':
-                inputs += [frames]
-                # inputs += [orig_frames]
+                # inputs += [frames]
+                inputs += [tf.reshape(frames, [-1, inp_shape[1], inp_shape[2], channel])]
                 channels += [channel]
 
             # None, 84, 84, 3
             retina_out = tf.concat(inputs, axis=-1, name='retina_output')
             retina_channels = np.sum(channels)
 
-            if self.first_time:
-                self.retina = event
-                self.retina_out = retina_out
+            self.retina = event
+            self.retina_out = retina_out
 
             if self.args.conv_preprocess:
                 lenet = Lenet(retina_out,
@@ -197,23 +203,30 @@ class DeepQNetwork:
                               trainable=self.trainable,
                               first=self.first_time,
                               pool_pads=['SAME', 'SAME'],
+                              conv_pads=["SAME", "SAME"],
                               pool_ksizes=[[1, 2, 2, 1], [1, 2, 2, 1]],
                               pool_strides=[[1, 1, 1, 1], [1, 1, 1, 1]],
                               )
+
+                # lenet = Lenet(retina_out,
+                #               conv_filters=[[5, 5, retina_channels, 8], [5, 5, 8, 16]],
+                #               conv_pads=['SAME', 'SAME'],
+                #               trainable=self.trainable,
+                #               first=self.first_time
+                #               )
                 inp = lenet.output
+                inp = tf.reshape(tf.transpose(inp, [0, 3, 1, 2]), [-1, 1, 84, 84])
                 debug_str = "Lenet Output Shape: {}"
                 new_inp_sh = inp.get_shape().as_list()
-                # inp = tf.reshape(inp, [-1, new_inp_sh[1] * 4, new_inp_sh[2] * 4, 1])
-
             else:
                 inp = retina_out
                 debug_str = "Output No ConvNet: {}"
 
                 # preproc_out = inp
                 new_inp_sh = inp.get_shape().as_list()
-
             splits = tf.split(inp, 4)
-            preproc_out = tf.concat(splits, -1)
+            preproc_out = tf.concat(splits, axis=1)
+            preproc_out = tf.transpose(preproc_out, [0, 2, 3, 1])
             if self.args.testing: print(debug_str.format(new_inp_sh))
 
             # new_inp_sh = tf.shape(inp)
@@ -235,8 +248,9 @@ class DeepQNetwork:
             # print("Fully connected Shape: {}".format(fc4.get_shape().as_list()))
             # return fc4
         elif self.process is None:
-            # return tf.reshape(input_tensor, [-1, inp_shape[1], inp_shape[2],1])
-            return input_tensor
+
+            x_normalized = tf.to_float(input_tensor) / 255.0
+            return x_normalized
         else:
             raise NotImplementedError('Preprocessing input not implemented')
 
@@ -244,12 +258,12 @@ class DeepQNetwork:
         self.trainable = trainable
         print("Building network for %s trainable=%s" % (name, trainable))
         x = self.input
-        x_norm = self.x_normalized
-        inp_shape = x_norm.get_shape().as_list()
+
+        inp_shape = x.get_shape().as_list()
         # None, 84, 84, 4
         print("Input shape to preproc {}".format(inp_shape))
         # Apply EDR
-        dqn_in = self.applyPreprocess(x_norm, inp_shape)
+        dqn_in = self.applyPreprocess(x, inp_shape)
         dqn_in_shape = dqn_in.get_shape().as_list()
         self.feat_size = dqn_in_shape[-1]
         if self.args.testing: print("After preprocessing input shape {}".format(dqn_in_shape))
@@ -327,15 +341,22 @@ class DeepQNetwork:
             else:
                 y_[i] = batch[i].reward + gamma * np.max(y2[i])
 
-        _, sum_str, norm_frames, retina, preproc = self.sess.run([self.train_step, self.merged, self.x_normalized, self.retina, self.preproc_out], feed_dict={
+        _, sum_str, norm_frames, retina, preproc, r_x = self.sess.run([self.train_step,
+                                                                  self.merged,
+                                                                  self.input,
+                                                                  self.retina,
+                                                                  self.preproc_out,
+                                                                  self.retina_layer.r_x
+                                                                  ], feed_dict={
             self.x: x,
             self.a: a,
             self.y_: y_
         })
 
-        assert np.amin(norm_frames) >= 0 and np.amax(norm_frames) <= 1.0, 'Normalized input out of bounds'
+        # assert np.amin(norm_frames) >= 0 and np.amax(norm_frames) <= 1.0, 'Normalized input out of bounds'
 
-        if self.args.save_imgs and stepNumber % 5000 == 0:
+        # print('TEST TEST TEST ', np.amax(r_x), np.amin(r_x), np.mean(r_x))
+        if self.args.save_imgs and stepNumber % 100 == 0:
             print('Saving debug images to debugImages')
             dir_save_main = self.baseDir + '/debugImages'
             if not os.path.isdir(dir_save_main):
@@ -347,6 +368,12 @@ class DeepQNetwork:
             scipy.misc.imsave(dir_save + 'normFrame{}.png'.format(stepNumber), norm_frames[0, :, :, 0])
             scipy.misc.imsave(dir_save + 'retinaFramesOn{}.png'.format(stepNumber), retina[0, :, :, 0])
             scipy.misc.imsave(dir_save + 'retinaFramesOff{}.png'.format(stepNumber), retina[0, :, :, 1])
+            r_off = retina[0, :, :, 1]
+            r_on = retina[0, :, :, 0]
+            print("TEST TEST", np.amin(r_off[np.nonzero(r_off)]))
+            assert np.amin(r_off) >= 0 and np.amin(r_on) >= 0, 'retina output < 0'
+            print("RETINA ON -  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_on), np.amax(r_on), np.amin(r_on)))
+            print("RETINA OFF-  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_off), np.amax(r_off), np.amin(r_off)))
             for i in range(self.feat_size):
                 scipy.misc.imsave(dir_save + 'preprocOut{}_{}.png'.format(stepNumber, i), preproc[0, :, :, i])
 
