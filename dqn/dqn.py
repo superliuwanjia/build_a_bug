@@ -6,6 +6,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 import sys
 import pdb
+import time
 
 from networks import fc, flatten
 from retina import Retina
@@ -51,7 +52,7 @@ class DeepQNetwork:
         # self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
 
         self.input = tf.placeholder(tf.uint8, shape=[None, 84, 84, 4], name="screens")
-        print self.preprocess
+
         # pdb.set_trace()
         self.i_hat_s = tf.zeros_like(self.input, dtype=tf.float32)[:, :, :, 0]
         self.i_hat_s = tf.reshape(self.i_hat_s, [-1, 84 * 84])
@@ -62,6 +63,17 @@ class DeepQNetwork:
         self.first_time = True
 
         assert (len(tf.global_variables()) == 0),"Expected zero variables"
+
+        if self.preprocess == 'ema':
+            self.feat_size = 3 * 2
+        elif self.preprocess == 'stack':
+            self.feat_size = 3 * 3
+        elif self.preprocess is None:
+            self.feat_size = 4
+        else:
+            raise NotImplementedError('Preprocess not implemented')
+
+
         self.x, self.y = self.buildNetwork('policy', True, numActions)
         self.first_time = False
         if not self.preprocess:
@@ -89,8 +101,8 @@ class DeepQNetwork:
             print('length of trainable: {}'.format(len(trainable_variables)))
             print
 
-        start = 4 if self.args.conv_preprocess else 0
-
+        # start = 4 if self.args.conv_preprocess else 0
+        start = 0
         for i in range(start, len(trainable_variables)):
             if args.testing: print('global: {}, assigned from trainabled {}'.format(all_variables[len(trainable_variables) + i - start], trainable_variables[i]))
             self.update_target.append(all_variables[len(trainable_variables) + i - start].assign(trainable_variables[i]))
@@ -132,147 +144,133 @@ class DeepQNetwork:
             print('Loading from model file %s' % (args.model))
             self.saver.restore(self.sess, args.model)
 
-    def applyPreprocess(self, input_tensor, inp_shape):
-        inputs = []
-        channels = []
-        channel = 1
-        # pdb.set_trace()
+    def tf_apply_preprocess(self, input_frames):
         if self.preprocess == 'ema' or self.preprocess == 'stack':
-            orig_frames = tf.to_float(input_tensor)
-            frames = tf.transpose(orig_frames, [0, 3, 1, 2])
-            inp = tf.reshape(
-                    frames,
-                    [-1, inp_shape[3], inp_shape[1] * inp_shape[2]]
-            )
-            # None, 4, 7056
+            # Using retina or stacking event with raw frames
+            frames_shape = input_frames.get_shape().as_list()
+            t_frames = tf.transpose(input_frames, (3, 0, 1, 2))
 
-            if self.args.testing:
-                print('inp to retina: {}\n from frames {}'.format(inp.get_shape().as_list(), frames.get_shape().as_list()))
-
-            if not self.first_time:
-            # if False:
-                retina = Retina(inp,
-                                inp_shape,
-                                is_lrcn=True,
-                                i_hat_lg=self.i_hat_l,
-                                i_hat_md=self.i_hat_m,
-                                i_hat_sh=self.i_hat_s
-                                )
-
-
-            else:
-                retina = Retina(inp, inp_shape, is_lrcn=True)
-                self.retina_layer = retina
-
-            self.i_hat_s = retina.i_hat_sh[:, -1, :]
-            self.i_hat_m = retina.i_hat_md[:, -1, :]
-            self.i_hat_l = retina.i_hat_lg[:, -1, :]
-            self.sd = retina.i_s
-
-            # None, 4, 84, 84 ,1
-            # frames = tf.expand_dims(frames, -1)
-            # # move frames into batch size
-            # frame_shape = tf.shape(frames)
-            # # None*4, 84, 84, 1
-            # frames = tf.reshape(frames, [frame_shape[0] * frame_shape[1], frame_shape[2], frame_shape[3], 1])
-            # if self.args.testing: print('Frame Output Shape {}'.format(frames.get_shape().as_list()))
-
-            event = retina.get_output()
-
-            if self.args.testing: print('Retina Output Shape {}'.format(event.get_shape().as_list()))
-
-            event_channel = 2
-            inputs += [event]
-            channels += [event_channel]
-
+            event = self.tf_retina(t_frames)
             if self.preprocess == 'stack':
-                # inputs += [frames]
-                inputs += [tf.reshape(frames, [-1, inp_shape[1], inp_shape[2], channel])]
-                channels += [channel]
-
-            # None, 84, 84, 3
-            retina_out = tf.concat(inputs, axis=-1, name='retina_output')
-            retina_channels = np.sum(channels)
-
-            self.retina = event
-            self.retina_out = retina_out
-
-            if self.args.conv_preprocess:
-                lenet = Lenet(retina_out,
-                              conv_filters=[[5, 5, retina_channels, 6], [2, 2, 6, 1]],
-                              trainable=self.trainable,
-                              first=self.first_time,
-                              pool_pads=['SAME', 'SAME'],
-                              conv_pads=["SAME", "SAME"],
-                              pool_ksizes=[[1, 2, 2, 1], [1, 2, 2, 1]],
-                              pool_strides=[[1, 1, 1, 1], [1, 1, 1, 1]],
-                              )
-
-                # lenet = Lenet(retina_out,
-                #               conv_filters=[[5, 5, retina_channels, 8], [5, 5, 8, 16]],
-                #               conv_pads=['SAME', 'SAME'],
-                #               trainable=self.trainable,
-                #               first=self.first_time
-                #               )
-                inp = lenet.output
-                inp = tf.reshape(tf.transpose(inp, [0, 3, 1, 2]), [-1, 1, 84, 84])
-                debug_str = "Lenet Output Shape: {}"
-                new_inp_sh = inp.get_shape().as_list()
-            else:
-                inp = retina_out
-                debug_str = "Output No ConvNet: {}"
-
-                # preproc_out = inp
-                new_inp_sh = inp.get_shape().as_list()
-            splits = tf.split(inp, 4)
-            preproc_out = tf.concat(splits, axis=1)
-            preproc_out = tf.transpose(preproc_out, [0, 2, 3, 1])
-            if self.args.testing: print(debug_str.format(new_inp_sh))
-
-            # new_inp_sh = tf.shape(inp)
-
-            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3], 4])
-            # inp = tf.reshape(inp, [new_inp_sh[0] / 4, 84, 84, 4])
-
-
-            if self.args.testing: print(preproc_out.get_shape().as_list())
-            if self.first_time:
-                self.preproc_out = preproc_out
-            return preproc_out
-            # lstm_inp = tf.reshape(inp,[-1, inp_shape[-1], new_inp_sh[1]* new_inp_sh[2]*new_inp_sh[3]])
-            # lstm_cell = tf.contrib.rnn.BasicLSTMCell(new_inp_sh[1]*new_inp_sh[2]*new_inp_sh[3])
-            # out, state = tf.nn.dynamic_rnn(lstm_cell, lstm_inp, dtype = tf.float32)
-            # outputs = tf.reshape(out[:,-1,:],[-1, new_inp_sh[1], new_inp_sh[2], new_inp_sh[3]])
-            # print("LSTM Out shape: {}".format(outputs.get_shape().as_list()))
-            # _, _, fc4 = fc('fc4', flatten(outputs), 512, activation="relu")
-            # print("Fully connected Shape: {}".format(fc4.get_shape().as_list()))
-            # return fc4
-        elif self.process is None:
-
-            x_normalized = tf.to_float(input_tensor) / 255.0
-            return x_normalized
+                t_frames = tf.expand_dims(t_frames, len(frames_shape))
+                event = tf.concat((event, t_frames), len(frames_shape))
+            event_shape = event.get_shape().as_list()
+            # print(np.amax(event), np.amin(event), np.mean(event), event.shape)
+            event = tf.transpose(event, (1, 2, 3, 4, 0))
+            event = event[:, :, :, :, 1:]
+            # print
+            # for i in range(4):
+            #     print('two', np.amax(event[0,:,:,1,i]), np.amin(event[0,:,:,1,i]), np.mean(event[0,:,:,1,i]), event[0,:,:,1,i].shape)
+            event_out = tf.reshape(event, (event_shape[1], event_shape[2], event_shape[3], event_shape[4] * (event_shape[0] - 1)))
+            
+        elif self.preprocess is None:
+            event_out = tf.to_float(input_frames) / 255.0
         else:
-            raise NotImplementedError('Preprocessing input not implemented')
+            raise NotImplementedError('Preprocess type not implemented')
+
+        return event_out
+
+    def np_retina(self, video, alpha=0.5, mu_on=0.00, mu_off=-0.1):
+        """
+        video is a numpy array, where the first dimention is time T
+        """
+        # decay constant must be smaller than 1
+        assert alpha <= 1 and alpha >= 0, 'decay constant must be positive and less than 1'
+
+        ema = np.zeros(video.shape, dtype=float)
+
+        # normalize video pixel value to 0 ~ 1
+        video = (video.astype(np.float32)) + 1e-3
+
+        # EMA filtering
+        ema[0, :, :, :] = video[0, :, :, :]
+
+        for t in range(1, video.shape[0]):
+            ema[t, :, :, :] = (1 - alpha) * ema[t - 1, :, :, :] + \
+                              alpha * video[t, :, :, :]
+
+        # compute relative change
+        change = np.tanh(np.log(np.divide(video, ema + 1e-5)))
+
+        # thresholding
+        on = np.expand_dims(np.maximum(0, change - mu_on),
+                            len(video.shape))
+        off = np.expand_dims(np.maximum(0, - (change - mu_off)),
+                             len(video.shape))
+
+        return np.concatenate((on, off), axis=4)
+
+    def tf_retina(self, video, alpha=0.5, mu_on=0.00, mu_off=-0.1):
+        """
+        video is a numpy array, where the first dimention is time T
+        """
+        # decay constant must be smaller than 1
+        # assert alpha <= 1 and alpha >= 0, 'decay constant must be positive and less than 1'
+
+        ema = np.zeros(video.shape, dtype=float)
+
+        # normalize video pixel value to 0 ~ 1
+        video = tf.to_float(video) + 1e-3
+
+        # EMA filtering
+        ema[0, :, :, :] = video[0, :, :, :]
+
+        for t in range(1, video.shape[0]):
+            ema[t, :, :, :] = (1 - alpha) * ema[t - 1, :, :, :] + \
+                              alpha * video[t, :, :, :]
+
+        # compute relative change
+        change = tf.tanh(tf.log(tf.divide(video, ema + 1e-5)))
+
+        # thresholding
+        on = tf.expand_dims(tf.nn.relu(change - mu_on), 4)
+        off = tf.expand_dims(tf.nn.relu(-(change - mu_off)), 4)
+
+        return tf.concat((on, off), axis=4)
+
+    def apply_preprocess(self, input_frames):
+        if self.preprocess == 'ema' or self.preprocess == 'stack':
+            # Using retina or stacking event with raw frames
+            frames_shape = input_frames.shape
+            t_frames = np.transpose(input_frames, (3, 0, 1, 2))
+
+            event = self.retina(t_frames)
+            if self.preprocess == 'stack':
+                t_frames = np.expand_dims(t_frames, len(frames_shape))
+                event = np.concatenate((event, t_frames), len(frames_shape))
+            event_shape = event.shape
+            # print(np.amax(event), np.amin(event), np.mean(event), event.shape)
+            event = np.transpose(event, (1, 2, 3, 4, 0))
+            event = event[:, :, :, :, 1:]
+            # print
+            # for i in range(4):
+            #     print('two', np.amax(event[0,:,:,1,i]), np.amin(event[0,:,:,1,i]), np.mean(event[0,:,:,1,i]), event[0,:,:,1,i].shape)
+            event_out = np.reshape(event, (event_shape[1], event_shape[2], event_shape[3], event_shape[4] * (event_shape[0] - 1)))
+            # print('three', np.amax(event_out[0,:,:,0]), np.amin(event_out[0,:,:,0]), np.mean(event_out[0,:,:,0]), event_out[0,:,:,0].shape)
+        elif self.preprocess is None:
+            event_out = input_frames / 255.0
+        else:
+            raise NotImplementedError('Preprocess type not implemented')
+
+        return event_out
 
     def buildNetwork(self, name, trainable, numActions):
         self.trainable = trainable
         print("Building network for %s trainable=%s" % (name, trainable))
-        x = self.input
-
-        inp_shape = x.get_shape().as_list()
+        # First layer takes a screen, and shrinks by 2x
+        x = tf.placeholder(tf.float32, shape=[None, 84, 84, self.feat_size], name="preproc_screens")
         # None, 84, 84, 4
-        print("Input shape to preproc {}".format(inp_shape))
-        # Apply EDR
-        dqn_in = self.applyPreprocess(x, inp_shape)
-        dqn_in_shape = dqn_in.get_shape().as_list()
-        self.feat_size = dqn_in_shape[-1]
-        if self.args.testing: print("After preprocessing input shape {}".format(dqn_in_shape))
+        # print("Input shape to preproc {}".format(inp_shape))
+        # dqn_in = self.applyPreprocess(x, inp_shape)
+        # dqn_in_shape = dqn_in.get_shape().as_list()
+        # self.feat_size = dqn_in_shape[-1]
+        # if self.args.testing: print("After preprocessing input shape {}".format(dqn_in_shape))
 
         # Second layer convolves 32 8x8 filters with stride 4 with relu
         with tf.variable_scope("cnn1_" + name):
             W_conv1, b_conv1 = self.makeLayerVariables([8, 8, self.feat_size, 32], trainable, "conv1")
 
-            h_conv1 = tf.nn.relu(tf.nn.conv2d(dqn_in, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
+            h_conv1 = tf.nn.relu(tf.nn.conv2d(x, W_conv1, strides=[1, 4, 4, 1], padding='VALID') + b_conv1, name="h_conv1")
             print(h_conv1)
 
         # Third layer convolves 64 4x4 filters with stride 2 with relu
@@ -321,16 +319,51 @@ class DeepQNetwork:
         return weights, biases
 
     def inference(self, screens):
-        y = self.sess.run([self.y], {self.x: screens})
+        proc_screens = self.apply_preprocess(screens)
+        y = self.sess.run([self.y], {self.x: proc_screens})
         q_values = np.squeeze(y)
         return np.argmax(q_values)
 
     def train(self, batch, stepNumber):
 
         x2 = [b.state2.getScreens() for b in batch]
-        y2 = self.y_target.eval(feed_dict={self.x_target: x2}, session=self.sess)
-
         x = [b.state1.getScreens() for b in batch]
+
+        '''
+        start = time.time()
+        x2 = np.asarray(x2)
+        x = np.asarray(x)
+        end = time.time()
+        # print('CASTING ARRAY TIME: {}'.format(end - start))
+
+        start = time.time()
+        proc_x2 = self.apply_preprocess(x2)
+        end = time.time()
+        # print('APPLYING PREPROCESS TIME: {}'.format(end - start))
+        proc_x = self.apply_preprocess(x)
+        # print('three', np.amax(proc_x), np.amin(proc_x), np.mean(proc_x), proc_x.shape)
+        '''
+
+        if self.args.save_imgs and stepNumber % 100 == 0:
+            print('Saving debug images to debugImages')
+            dir_save_main = self.baseDir + '/debugImages'
+            if not os.path.isdir(dir_save_main):
+                os.makedirs(dir_save_main)
+
+            dir_save = dir_save_main + '/{}/'.format(stepNumber)
+            if not os.path.isdir(dir_save):
+                os.makedirs(dir_save)
+            scipy.misc.imsave(dir_save + 'normFrame{}.png'.format(stepNumber), x[0, :, :, 0])
+            scipy.misc.imsave(dir_save + 'retinaFramesOn{}.png'.format(stepNumber), proc_x[0, :, :, 0])
+            scipy.misc.imsave(dir_save + 'retinaFramesOff{}.png'.format(stepNumber), proc_x[0, :, :, 1])
+            r_off = proc_x[0, :, :, 1]
+            r_on = proc_x[0, :, :, 0]
+            print("TEST TEST", np.amin(r_off[np.nonzero(r_off)]))
+            assert np.amin(r_off) >= 0 and np.amin(r_on) >= 0, 'retina output < 0'
+            print("RETINA ON -  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_on), np.amax(r_on), np.amin(r_on)))
+            print("RETINA OFF-  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_off), np.amax(r_off), np.amin(r_off)))
+
+        y2 = self.y_target.eval(feed_dict={self.x_target: proc_x2}, session=self.sess)
         a = np.zeros((len(batch), self.numActions))
         y_ = np.zeros(len(batch))
 
@@ -341,42 +374,11 @@ class DeepQNetwork:
             else:
                 y_[i] = batch[i].reward + gamma * np.max(y2[i])
 
-        _, sum_str, norm_frames, retina, preproc, r_x = self.sess.run([self.train_step,
-                                                                  self.merged,
-                                                                  self.input,
-                                                                  self.retina,
-                                                                  self.preproc_out,
-                                                                  self.retina_layer.r_x
-                                                                  ], feed_dict={
-            self.x: x,
-            self.a: a,
-            self.y_: y_
-        })
-
-        # assert np.amin(norm_frames) >= 0 and np.amax(norm_frames) <= 1.0, 'Normalized input out of bounds'
-
-        # print('TEST TEST TEST ', np.amax(r_x), np.amin(r_x), np.mean(r_x))
-        if self.args.save_imgs and stepNumber % 100 == 0:
-            print('Saving debug images to debugImages')
-            dir_save_main = self.baseDir + '/debugImages'
-            if not os.path.isdir(dir_save_main):
-                os.makedirs(dir_save_main)
-
-            dir_save = dir_save_main + '/{}/'.format(stepNumber)
-            if not os.path.isdir(dir_save):
-                os.makedirs(dir_save)
-            scipy.misc.imsave(dir_save + 'normFrame{}.png'.format(stepNumber), norm_frames[0, :, :, 0])
-            scipy.misc.imsave(dir_save + 'retinaFramesOn{}.png'.format(stepNumber), retina[0, :, :, 0])
-            scipy.misc.imsave(dir_save + 'retinaFramesOff{}.png'.format(stepNumber), retina[0, :, :, 1])
-            r_off = retina[0, :, :, 1]
-            r_on = retina[0, :, :, 0]
-            print("TEST TEST", np.amin(r_off[np.nonzero(r_off)]))
-            assert np.amin(r_off) >= 0 and np.amin(r_on) >= 0, 'retina output < 0'
-            print("RETINA ON -  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_on), np.amax(r_on), np.amin(r_on)))
-            print("RETINA OFF-  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_off), np.amax(r_off), np.amin(r_off)))
-            for i in range(self.feat_size):
-                scipy.misc.imsave(dir_save + 'preprocOut{}_{}.png'.format(stepNumber, i), preproc[0, :, :, i])
-
+        _, sum_str = self.sess.run([self.train_step, self.merged], feed_dict={
+                                                                            self.x: proc_x,
+                                                                            self.a: a,
+                                                                            self.y_: y_
+                                                                        })
         self.summary_writer.add_summary(sum_str, stepNumber)
         self.summary_writer.flush()
 
