@@ -43,7 +43,6 @@ def get_statistics():
             accum_frames.append(int(split[4].split(":")[-1]))
             game_nums.append(int(split[1].split(":")[-1]))
             scores.append(int(split[2].split(":")[-1]))
-        print accum_frames, scores
         plt.plot(accum_frames, scores)
         # plt.show()
 if __name__ == '__main__':
