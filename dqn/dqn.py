@@ -370,7 +370,7 @@ class DeepQNetwork:
         self.summary_writer.add_summary(sum_str, stepNumber)
         self.summary_writer.flush()
 
-        if self.args.save_imgs and stepNumber % 100 == 0:
+        if self.args.save_imgs and stepNumber % 10000 == 0:
             print('Saving debug images to debugImages')
             dir_save_main = self.baseDir + '/debugImages'
             if not os.path.isdir(dir_save_main):
