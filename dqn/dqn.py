@@ -371,25 +371,28 @@ class DeepQNetwork:
         self.summary_writer.flush()
 
         if self.args.save_imgs and stepNumber % 10000 == 0:
-            print('Saving debug images to debugImages')
-            dir_save_main = self.baseDir + '/debugImages'
-            if not os.path.isdir(dir_save_main):
-                os.makedirs(dir_save_main)
+            try:
+                print('Saving debug images to debugImages')
+                dir_save_main = self.baseDir + '/debugImages'
+                if not os.path.isdir(dir_save_main):
+                    os.makedirs(dir_save_main)
 
-            dir_save = dir_save_main + '/{}/'.format(stepNumber)
-            if not os.path.isdir(dir_save):
-                os.makedirs(dir_save)
-            scipy.misc.imsave(dir_save + 'normFrame{}.png'.format(stepNumber), np.array(x)[0, :, :, 0])
-            scipy.misc.imsave(dir_save + 'retinaFramesOn{}.png'.format(stepNumber), proc_x[0, :, :, 0])
-            scipy.misc.imsave(dir_save + 'retinaFramesOff{}.png'.format(stepNumber), proc_x[0, :, :, 1])
-            if self.preprocess == 'stack':
-                scipy.misc.imsave(dir_save + 'Orig frames stacked{}.png'.format(stepNumber), proc_x[0, :, :, 2])
-            r_off = proc_x[0, :, :, 1]
-            r_on = proc_x[0, :, :, 0]
-            print("TEST TEST", np.amin(r_off[np.nonzero(r_off)]))
-            assert np.amin(r_off) >= 0 and np.amin(r_on) >= 0, 'retina output < 0'
-            print("RETINA ON -  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_on), np.amax(r_on), np.amin(r_on)))
-            print("RETINA OFF-  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_off), np.amax(r_off), np.amin(r_off)))
+                dir_save = dir_save_main + '/{}/'.format(stepNumber)
+                if not os.path.isdir(dir_save):
+                    os.makedirs(dir_save)
+                scipy.misc.imsave(dir_save + 'normFrame{}.png'.format(stepNumber), np.array(x)[0, :, :, 0])
+                scipy.misc.imsave(dir_save + 'retinaFramesOn{}.png'.format(stepNumber), proc_x[0, :, :, 0])
+                scipy.misc.imsave(dir_save + 'retinaFramesOff{}.png'.format(stepNumber), proc_x[0, :, :, 1])
+                if self.preprocess == 'stack':
+                    scipy.misc.imsave(dir_save + 'Orig frames stacked{}.png'.format(stepNumber), proc_x[0, :, :, 2])
+                r_off = proc_x[0, :, :, 1]
+                r_on = proc_x[0, :, :, 0]
+                print("TEST TEST", np.amin(r_off[np.nonzero(r_off)]))
+                assert np.amin(r_off) >= 0 and np.amin(r_on) >= 0, 'retina output < 0'
+                print("RETINA ON -  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_on), np.amax(r_on), np.amin(r_on)))
+                print("RETINA OFF-  MEAN: {}, MAX: {}, MIN: {}".format(np.mean(r_off), np.amax(r_off), np.amin(r_off)))
+            except:
+                print('Something went wrong with saving images')
 
         if stepNumber % self.targetModelUpdateFrequency == 0:
 			self.sess.run(self.update_target)

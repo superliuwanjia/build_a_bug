@@ -11,7 +11,7 @@ def get_statistics():
     with open(sys.argv[1], 'r') as f:
         content = f.readlines()
 
-        counts = [30, 50, 100]
+        counts = [30, 50, 100, 200]
         first_lines = content[:counts[-1]]
         last_lines = reversed(content[~counts[-1]:-1])
         first_scores = []

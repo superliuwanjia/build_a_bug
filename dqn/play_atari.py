@@ -44,7 +44,7 @@ parser.add_argument("--save-imgs", type=str2bool, default=True, help="Boolean to
 parser.add_argument("rom", help="rom file to run")
 args = parser.parse_args()
 
-baseOutputDir = 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S") if not args.testing else 'test'
+baseOutputDir = '{}-{}-'.format(args.rom.split('/')[-1], args.preprocess) + 'game-out-' + time.strftime("%Y-%m-%d-%H-%M-%S") if not args.testing else 'test'
 if os.path.exists(baseOutputDir) and baseOutputDir == 'test':
     shutil.rmtree(baseOutputDir)
     # args.observation_steps = args.batch_size
